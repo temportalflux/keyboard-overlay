@@ -1,8 +1,32 @@
 body {
-	margin: 20px;
-	background: #2d2d2d99;
+	background: rgba(45, 45, 45, 0.6);
 	color: white;
 }
 .heading {
 	text-align: center;
+}
+
+@mixin glyph_mask {
+	--glyph: "";
+	-webkit-mask: var(--glyph) no-repeat 50% 50%;
+	mask: var(--glyph) no-repeat 50% 50%;
+	background-color: #ffffffff;
+}
+.input-glyph {
+	@include glyph_mask;
+	width: 64px;
+	height: 64px;
+}
+
+.key {
+	--x: 0px;
+	--y: 0px;
+	--scale: 1;
+	--scale-x: calc(var(--scale) * 1);
+	--scale-y: calc(var(--scale) * -1);
+	position: absolute;
+	--offset-x: calc(var(--scale-x) * var(--x));
+	--offset-y: calc(var(--scale-y) * var(--y));
+	left: calc(50% + var(--offset-x));
+	top: calc(50% + var(--offset-y));
 }
