@@ -7,7 +7,9 @@ authors = ["Dustin Yost <dustin.yost.t@gmail.com>"]
 version = "0.0.1"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[[bin]]
+name = "frontend"
+path = "src/frontend.rs"
 
 [dependencies]
 shared = { path = "../shared" }
