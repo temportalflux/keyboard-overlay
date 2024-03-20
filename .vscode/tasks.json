@@ -1,0 +1,59 @@
+{
+	// See https://go.microsoft.com/fwlink/?LinkId=733558
+	// for the documentation about the tasks.json format
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "1. Serve",
+			"command": "cargo",
+			"args": [ "tauri", "dev" ],
+			"group": "build",
+			"problemMatcher": []
+		},
+		{
+			"label": "2. Build",
+			"command": "cargo",
+			"args": [ "tauri", "build" ],
+			"group": "build",
+			"problemMatcher": []
+		},
+		{
+			"label": "3. [Frontend] Build",
+			"command": "trunk",
+			"args": [ "build" ],
+			"group": "build",
+			"options": {
+				"cwd": "${workspaceFolder}/frontend"
+			},
+			"problemMatcher": []
+		},
+		{
+			"label": "4. [Cargo] Format",
+			"command": "cargo",
+			"args": [ "fmt", "--all" ],
+			"group": "build",
+			"problemMatcher": []
+		},
+		{
+			"label": "5. [Cargo] Run Tests",
+			"command": "cargo",
+			"args": [ "test" ],
+			"group": "build",
+			"problemMatcher": []
+		},
+		{
+			"label": "6. [Cargo] Fix",
+			"command": "cargo",
+			"args": [ "fix", "--allow-staged" ],
+			"group": "build",
+			"problemMatcher": []
+		},
+		{
+			"label": "7. [Cargo] Clean",
+			"command": "cargo",
+			"args": [ "clean" ],
+			"group": "build",
+			"problemMatcher": []
+		}
+	]
+}

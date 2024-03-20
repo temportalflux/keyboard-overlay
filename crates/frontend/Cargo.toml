@@ -1,0 +1,57 @@
+[package]
+name = "frontend"
+description = ""
+repository = "https://github.com/temportalflux/keyboard-overlay"
+license = "MIT OR Apache-2.0"
+authors = ["Dustin Yost <dustin.yost.t@gmail.com>"]
+version = "0.0.1"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+shared = { path = "../shared" }
+any-range = "0.1"
+anyhow = "1.0"
+thiserror = "1.0"
+enumset = "1.0"
+multimap = "0.10"
+enum-map = "2.6"
+convert_case = "0.6"
+dyn-clone = "1.0"
+simplelog = "0.12"
+num-traits = "0.2"
+downcast-rs = "1.2"
+async-channel = "2.2"
+derivative = "2.2"
+itertools = "0.12"
+js-sys = "0.3"
+regex = "1.8"
+
+futures = "0.3"
+futures-util = "0.3"
+reqwest = { version = "0.11", features = ["json"] }
+
+web-sys = { version = "0.3", features = [
+	"DataTransfer", "Document", "DomTokenList", "VisibilityState",
+	"HtmlCollection", "HtmlSelectElement", "HtmlInputElement", "HtmlTextAreaElement",
+	"Request", "Storage", "Window",
+	"Node", "NodeList",
+	"MediaQueryList", "MediaQueryListEvent",
+	"Event", "EventTarget", "KeyboardEvent",
+	"Performance", "Screen",
+	"UiEvent", "CssStyleDeclaration",
+	"IdbFactory", "IdbOpenDbRequest",
+] }
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+gloo-events = "0.2"
+gloo-storage = "0.3"
+gloo-utils = "0.2"
+gloo-timers = { version = "0.3", features = ["futures"] }
+fluvio-wasm-timer = "0.2"
+wasm-timer = "0.2"
+
+yew = { version = "0.21", features = ["csr"] }
+yewdux = "0.10"
+yew-hooks = "0.3"

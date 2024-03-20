@@ -1,0 +1,10 @@
+{
+	"recommendations": [
+		"gordonlarrigan.vscode-kanbn",
+		"serayuzgur.crates",
+		"rust-lang.rust-analyzer",
+		"tamasfe.even-better-toml",
+		"kdl-org.kdl",
+		"jock.svg"
+	]
+}

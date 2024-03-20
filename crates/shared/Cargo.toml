@@ -1,0 +1,10 @@
+[package]
+name = "shared"
+description = ""
+repository = "https://github.com/temportalflux/keyboard-overlay"
+license = "MIT OR Apache-2.0"
+authors = ["Dustin Yost <dustin.yost.t@gmail.com>"]
+version = "0.0.1"
+edition = "2021"
+
+[dependencies]

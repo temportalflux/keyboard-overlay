@@ -1,0 +1,25 @@
+{
+	"editor.insertSpaces": false,
+	"editor.tabSize": 2,
+	"task.quickOpen.history": 0,
+	"explorer.sortOrder": "mixed",
+	"terminal.integrated.defaultProfile.windows": "Git Bash",
+	"editor.detectIndentation": false,
+	"rust-analyzer.showUnlinkedFileNotification": false,
+	"rust-analyzer.cargo.target": "wasm32-unknown-unknown",
+	"rust-analyzer.server.extraEnv": {
+		"CARGO_TARGET_DIR": "target_analyzer"
+	},
+	"rust-analyzer.linkedProjects": [
+		"crates/application/Cargo.toml",
+		"crates/frontend/Cargo.toml",
+		"crates/shared/Cargo.toml",
+	],
+	"rust-analyzer.check.extraArgs": [
+		"--target-dir=target_analyzer"
+	],
+	"search.exclude": {
+		"**/target": true,
+		"**/target_analyzer": true
+	}
+}
