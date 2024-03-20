@@ -1,0 +1,11 @@
+modes {
+	cycle_trigger "=" {
+		ctrl true
+	}
+	// 1. display current layer
+	// 2. display only keystrokes on input for x seconds
+}
+default_layer "alpha"
+layer "alpha" {
+
+}

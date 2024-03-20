@@ -1,3 +1,3 @@
-# Keyboard Overlay
+# Layered Key Map Display
 
-TBD
+Application for displaying keymap layout and input key strokes.

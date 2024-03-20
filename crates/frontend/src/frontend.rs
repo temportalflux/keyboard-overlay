@@ -26,13 +26,10 @@ fn App() -> Html {
 	// The effect will run every time `name` changes.
 	{
 		let welcome = welcome.clone();
-		use_effect_with(
-			(*name).clone(),
-			move |name| {
-				update_welcome_message(welcome, name.clone());
-				|| ()
-			},
-		);
+		use_effect_with((*name).clone(), move |name| {
+			update_welcome_message(welcome, name.clone());
+			|| ()
+		});
 	}
 
 	let message = (*welcome).clone();

@@ -7,12 +7,15 @@
 		"withGlobalTauri": true
   },
   "package": {
-    "productName": "Keyboard Overlay",
+    "productName": "Layered Key Map Display",
     "version": "0.1.0"
   },
   "tauri": {
     "allowlist": {
-      "all": false
+      "all": true
+    },
+    "systemTray": {
+      "iconPath": "icons/icon.png"
     },
     "bundle": {
       "active": true,
@@ -26,10 +29,9 @@
         "icons/32x32.png",
         "icons/128x128.png",
         "icons/128x128@2x.png",
-        "icons/icon.icns",
         "icons/icon.ico"
       ],
-      "identifier": "com.temportalflux.keyboard-overlay",
+      "identifier": "com.temportalflux.layered-key-map-display",
       "longDescription": "",
       "macOS": {
         "entitlements": null,
@@ -55,11 +57,16 @@
     },
     "windows": [
       {
-        "fullscreen": false,
+        "title": "Layered Key Map Display",
+        "width": 800,
         "height": 600,
-        "resizable": true,
-        "title": "Keyboard Overlay",
-        "width": 800
+        "fullscreen": false,
+        "resizable": false,
+				"visible": true,
+				"skipTaskbar": true,
+				"alwaysOnTop": true,
+				"transparent": true,
+				"decorations": false
       }
     ]
   }
