@@ -3,6 +3,24 @@ body {
 	color: white;
 }
 
+.guideline {
+	display: none;
+	border-color: #00000099;
+	border-style: solid;
+	border-width: 2px;
+	position: absolute;
+}
+.guideline.x {
+	left: calc(50% - 1px);
+	top: 0;
+	height: 100%;
+}
+.guideline.y {
+	left: 0;
+	top: calc(50% - 1px);
+	width: 100%;
+}
+
 @mixin glyph_mask {
 	--glyph: "";
 	-webkit-mask: var(--glyph) no-repeat 50% 50%;
@@ -18,14 +36,23 @@ body {
 .key {
 	--x: 0px;
 	--y: 0px;
+	--width: 10px;
+	--height: 10px;
 	--scale: 1;
 	--scale-x: calc(var(--scale) * 1);
 	--scale-y: calc(var(--scale) * -1);
 	position: absolute;
 	--offset-x: calc(var(--scale-x) * var(--x));
 	--offset-y: calc(var(--scale-y) * var(--y));
-	left: calc(50% + var(--offset-x));
-	top: calc(50% + var(--offset-y));
+	--center-x: calc(0.5 * var(--width));
+	--center-y: calc(0.5 * var(--height));
+	left: calc(50% + var(--offset-x) - var(--center-x));
+	top: calc(50% + var(--offset-y) - var(--center-y));
+
+	> .input-glyph {
+		width: var(--width);
+		height: var(--height);
+	}
 }
 .key[side="left"] {
 	--scale-x: -1;

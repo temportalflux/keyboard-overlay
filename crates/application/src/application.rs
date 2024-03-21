@@ -1,7 +1,7 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use shared::{InputUpdate, Layout};
+use shared::{InputSource, InputUpdate, Layout, Side};
 use tauri::{CustomMenuItem, Manager, SystemTray, SystemTrayEvent, SystemTrayMenu};
 use tauri_plugin_log::LogTarget;
 use tauri_plugin_positioner::WindowExt;
@@ -11,6 +11,67 @@ static MENU_TOGGLE_ID: &'static str = "toggle";
 static MENU_TOGGLE_HIDE: &'static str = "Hide";
 static MENU_TOGGLE_SHOW: &'static str = "Show";
 static EVENT_TOGGLE_WINDOW_VISIBILITY: &'static str = "toggleWindowVisibility";
+
+fn layout() -> Layout {
+	Layout(vec![
+			shared::KeySwitch {
+				switch_id: "l1".into(),
+				pos: (100f32, 60f32),
+				side: Some(Side::Left),
+				key_name: "arrow_up".into(),
+				key_source: InputSource::Keyboard,
+			},
+			shared::KeySwitch {
+				switch_id: "l2".into(),
+				pos: (100f32, 0f32),
+				side: Some(Side::Left),
+				key_name: "arrow_down".into(),
+				key_source: InputSource::Keyboard,
+			},
+			shared::KeySwitch {
+				switch_id: "l3".into(),
+				pos: (160f32, 0f32),
+				side: Some(Side::Left),
+				key_name: "arrow_left".into(),
+				key_source: InputSource::Keyboard,
+			},
+			shared::KeySwitch {
+				switch_id: "l4".into(),
+				pos: (40f32, 0f32),
+				side: Some(Side::Left),
+				key_name: "arrow_right".into(),
+				key_source: InputSource::Keyboard,
+			},
+			shared::KeySwitch {
+				switch_id: "r1".into(),
+				pos: (100f32, 60f32),
+				side: Some(Side::Right),
+				key_name: "arrow_up".into(),
+				key_source: InputSource::Keyboard,
+			},
+			shared::KeySwitch {
+				switch_id: "r2".into(),
+				pos: (100f32, 0f32),
+				side: Some(Side::Right),
+				key_name: "arrow_down".into(),
+				key_source: InputSource::Keyboard,
+			},
+			shared::KeySwitch {
+				switch_id: "r3".into(),
+				pos: (40f32, 0f32),
+				side: Some(Side::Right),
+				key_name: "arrow_left".into(),
+				key_source: InputSource::Keyboard,
+			},
+			shared::KeySwitch {
+				switch_id: "r4".into(),
+				pos: (160f32, 0f32),
+				side: Some(Side::Right),
+				key_name: "arrow_right".into(),
+				key_source: InputSource::Keyboard,
+			},
+		])
+}
 
 fn main() -> Result<(), tauri::Error> {
 	tauri::Builder::default()
@@ -33,8 +94,10 @@ fn main() -> Result<(), tauri::Error> {
 				move |_| {
 					log::debug!("received ready event from frontened");
 					log::debug!("emitting initialization events");
-					let _ = app.emit_all("layout", Layout);
-					let _ = app.emit_all("input", InputUpdate);
+					let _ = app.emit_all("layout", layout());
+					let _ = app.emit_all("input", InputUpdate([
+						"l1".into(), "r2".into(), "r4".into(), "l3".into(),
+					].into()));
 				}
 			});
 
