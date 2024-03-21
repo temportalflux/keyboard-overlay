@@ -73,32 +73,42 @@ fn App() -> Html {
 		<div class="guideline x" />
 		<div class="guideline y" />
 		{layout.as_ref().map(|layout| {
-			html!(<>{layout.0.iter().map(|key| html!{
+			let layer = layout.get_layer(layout.default_layer())?;
+			let iter = layout.switches().iter();
+			let iter = iter.filter_map(|(switch, location)| Some((switch, location, layer.get_binding(switch)?)));
+			let switches = iter.map(|(switch, location, binding)| html!(
 				<KeySwitch
-					binding={key.clone()}
-					is_active={input_update.as_ref().map(|input| input.0.contains(&key.switch_id)).unwrap_or(false)}
+					switch={switch.clone()}
+					location={*location}
+					binding={binding.clone()}
+					is_active={input_update.as_ref().map(|input| input.0.contains(switch)).unwrap_or(false)}
 				/>
-			}).collect::<Vec<_>>()}</>)
-		})}
+			)).collect::<Vec<_>>();
+			Some(html!(<>{switches}</>))
+		}).flatten()}
 	</>}
 }
 
 #[derive(Clone, PartialEq, Properties)]
 pub struct KeySwitchProps {
-	pub binding: shared::KeySwitch,
+	pub switch: AttrValue,
+	pub location: shared::SwitchLocation,
+	pub binding: shared::KeyBinding,
 	pub is_active: bool,
 }
 
 #[function_component]
 fn KeySwitch(
 	KeySwitchProps {
-		binding: key,
+		switch,
+		location,
+		binding,
 		is_active,
 	}: &KeySwitchProps,
 ) -> Html {
 	let class = classes!("key");
-	let mut pos = key.pos;
-	if key.side.is_some() {
+	let mut pos = location.pos;
+	if location.side.is_some() {
 		pos.0 = pos.0.abs();
 	}
 	let style = Style::from([
@@ -111,8 +121,8 @@ fn KeySwitch(
 		false => InputGlyphStyle::Outline,
 		true => InputGlyphStyle::Fill,
 	};
-	html!(<div id={key.switch_id.clone()} {class} {style} side={key.side.as_ref().map(Side::to_string)}>
-		<InputGlyph name={key.key_name.clone()} source={key.key_source} style={glyph_style} />
+	html!(<div id={switch.clone()} {class} {style} side={location.side.as_ref().map(Side::to_string)}>
+		<InputGlyph name={binding.key.clone()} source={binding.source} style={glyph_style} />
 	</div>)
 }
 

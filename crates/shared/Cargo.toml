@@ -11,10 +11,18 @@ edition = "2021"
 wasm = ["web-sys", "wasm-bindgen"]
 
 [dependencies]
+kdlize = { path = "../kdlize" }
+kdl = { version = "5.0.0-alpha.0", git = "https://github.com/kdl-org/kdl-rs" }
+
 log = { version = "0.4", features = ["std", "serde"] }
 simplelog = "0.12"
+
+anyhow = "1.0"
+thiserror = "1.0"
+
 serde = "1.0"
 time = "0.3"
+
 # wasm only
 wasm-bindgen = {version = "0.2", optional = true }
 web-sys = { version = "0.3", features = [], optional = true }

@@ -1,8 +1,12 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use shared::{InputSource, InputUpdate, Layout, Side};
-use std::collections::{HashMap, HashSet};
+use kdlize::FromKdl;
+use shared::InputUpdate;
+use std::{
+	collections::{HashMap, HashSet},
+	sync::Mutex,
+};
 use tauri::{CustomMenuItem, Manager, SystemTray, SystemTrayEvent, SystemTrayMenu};
 use tauri_plugin_log::LogTarget;
 use tauri_plugin_positioner::WindowExt;
@@ -19,69 +23,19 @@ static EVENT_TOGGLE_WINDOW_VISIBILITY: &'static str = "toggle_window_visibility"
 
 static MENU_QUIT: (&'static str, &'static str) = ("quit", "Quit");
 
-fn layout() -> Layout {
-	Layout(vec![
-		shared::KeySwitch {
-			switch_id: "l1".into(),
-			pos: (100f32, 60f32),
-			side: Some(Side::Left),
-			key_name: "arrow_up".into(),
-			key_source: InputSource::Keyboard,
-		},
-		shared::KeySwitch {
-			switch_id: "l2".into(),
-			pos: (100f32, 0f32),
-			side: Some(Side::Left),
-			key_name: "arrow_down".into(),
-			key_source: InputSource::Keyboard,
-		},
-		shared::KeySwitch {
-			switch_id: "l3".into(),
-			pos: (160f32, 0f32),
-			side: Some(Side::Left),
-			key_name: "arrow_left".into(),
-			key_source: InputSource::Keyboard,
-		},
-		shared::KeySwitch {
-			switch_id: "l4".into(),
-			pos: (40f32, 0f32),
-			side: Some(Side::Left),
-			key_name: "arrow_right".into(),
-			key_source: InputSource::Keyboard,
-		},
-		shared::KeySwitch {
-			switch_id: "r1".into(),
-			pos: (100f32, 60f32),
-			side: Some(Side::Right),
-			key_name: "arrow_up".into(),
-			key_source: InputSource::Keyboard,
-		},
-		shared::KeySwitch {
-			switch_id: "r2".into(),
-			pos: (100f32, 0f32),
-			side: Some(Side::Right),
-			key_name: "arrow_down".into(),
-			key_source: InputSource::Keyboard,
-		},
-		shared::KeySwitch {
-			switch_id: "r3".into(),
-			pos: (40f32, 0f32),
-			side: Some(Side::Right),
-			key_name: "arrow_left".into(),
-			key_source: InputSource::Keyboard,
-		},
-		shared::KeySwitch {
-			switch_id: "r4".into(),
-			pos: (160f32, 0f32),
-			side: Some(Side::Right),
-			key_name: "arrow_right".into(),
-			key_source: InputSource::Keyboard,
-		},
-	])
+#[derive(Default)]
+struct LayoutMutex(Mutex<shared::Layout>);
+impl LayoutMutex {
+	fn get(&self) -> shared::Layout {
+		self.0.lock().unwrap().clone()
+	}
+
+	fn set(&self, layout: shared::Layout) {
+		*self.0.lock().unwrap() = layout;
+	}
 }
 
 fn main() -> Result<(), tauri::Error> {
-	// TODO: generate a default config.kdl if one does not exist on load
 	tauri::Builder::default()
 		.plugin(
 			tauri_plugin_log::Builder::default()
@@ -89,6 +43,7 @@ fn main() -> Result<(), tauri::Error> {
 				.build(),
 		)
 		.plugin(tauri_plugin_positioner::init())
+		.manage(LayoutMutex::default())
 		.setup(|app| {
 			// Listen for logging from the frontend
 			app.listen_global("log", |event| {
@@ -104,13 +59,27 @@ fn main() -> Result<(), tauri::Error> {
 				move |_| {
 					log::debug!("received ready event from frontened");
 					log::debug!("emitting initialization events");
-					let _ = app.emit_all("layout", layout());
+					let _ = app.emit_all("layout", app.state::<LayoutMutex>().get());
 					let _ = app.emit_all(
 						"input",
 						InputUpdate(["l1".into(), "r2".into(), "r4".into(), "l3".into()].into()),
 					);
 				}
 			});
+
+			if let Some(config_dir) = tauri::api::path::app_config_dir(&app.config()) {
+				let config_path = config_dir.join("config.kdl");
+				// TODO: generate a default config.kdl if one does not exist
+				if config_path.exists() {
+					let config_str = tauri::api::file::read_string(config_path)?;
+					let config_doc = config_str.parse::<kdl::KdlDocument>()?;
+					let mut doc_node = kdl::KdlNode::new("document");
+					doc_node.set_children(config_doc);
+					let mut node = kdlize::NodeReader::new_root(&doc_node, ());
+					let layout = shared::Layout::from_kdl(&mut node)?;
+					app.state::<LayoutMutex>().set(layout);
+				}
+			}
 
 			let window = app.get_window("main").ok_or(tauri::Error::InvalidWindowHandle)?;
 
@@ -139,9 +108,14 @@ fn main() -> Result<(), tauri::Error> {
 									window.trigger(EVENT_TOGGLE_WINDOW_VISIBILITY, None);
 								}
 								id if id == TRAY_OPEN_CONFIG_DIR.0 => {
-									let Some(config_dir) = tauri::api::path::app_config_dir(&app.config()) else { return };
+									let Some(config_dir) = tauri::api::path::app_config_dir(&app.config()) else {
+										return;
+									};
 									let config_path_str = config_dir.display().to_string();
-									let Err(err) = tauri::api::shell::open(&app.shell_scope(), &config_path_str, None) else { return };
+									let Err(err) = tauri::api::shell::open(&app.shell_scope(), &config_path_str, None)
+									else {
+										return;
+									};
 									log::error!("failed to open config directory {config_path_str:?}: {err:?}");
 								}
 								id if id == TRAY_LOAD_CONFIG_FILE.0 => {} // TODO: refresh config kdl from `tauri::api::path::config_dir()`
