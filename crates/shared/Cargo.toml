@@ -7,4 +7,14 @@ authors = ["Dustin Yost <dustin.yost.t@gmail.com>"]
 version = "0.0.1"
 edition = "2021"
 
+[features]
+wasm = ["web-sys", "wasm-bindgen"]
+
 [dependencies]
+log = { version = "0.4", features = ["std", "serde"] }
+simplelog = "0.12"
+serde = "1.0"
+time = "0.3"
+# wasm only
+wasm-bindgen = {version = "0.2", optional = true }
+web-sys = { version = "0.3", features = [], optional = true }

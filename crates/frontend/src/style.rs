@@ -1,3 +1,4 @@
+use itertools::Itertools;
 use std::collections::BTreeMap;
 use yew::AttrValue;
 
@@ -59,6 +60,8 @@ impl yew::html::IntoPropValue<Option<AttrValue>> for Style {
 		}
 		let entries = self.0.into_iter();
 		let properties = entries.map(|(key, value)| format!("{key}: {value};"));
+		#[allow(unstable_name_collisions)]
+		let properties = properties.intersperse(" ".to_owned());
 		Some(properties.collect::<String>().into())
 	}
 }

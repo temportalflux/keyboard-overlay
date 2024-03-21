@@ -12,7 +12,10 @@ name = "frontend"
 path = "src/frontend.rs"
 
 [dependencies]
-shared = { path = "../shared" }
+tauri-sys = { git = "https://github.com/JonasKruckenberg/tauri-sys", features=["all"] }
+shared = { path = "../shared", features=["wasm"] }
+log = { version = "0.4", features = ["std"] }
+
 any-range = "0.1"
 anyhow = "1.0"
 thiserror = "1.0"
@@ -30,9 +33,12 @@ itertools = "0.12"
 js-sys = "0.3"
 regex = "1.8"
 
+serde = "1.0"
+serde-wasm-bindgen = "0.6"
+
 futures = "0.3"
 futures-util = "0.3"
-reqwest = { version = "0.11", features = ["json"] }
+reqwest = { version = "0.12", features = ["json"] }
 
 web-sys = { version = "0.3", features = [
 	"DataTransfer", "Document", "DomTokenList", "VisibilityState",

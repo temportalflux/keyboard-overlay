@@ -1,14 +1,16 @@
-pub fn add(left: usize, right: usize) -> usize {
-	left + right
+use serde::{Deserialize, Serialize};
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct LogRecord {
+	pub level: ::log::Level,
+	pub target: String,
+	pub file: Option<String>,
+	pub line: Option<u32>,
+	pub args: String,
 }
 
-#[cfg(test)]
-mod tests {
-	use super::*;
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Layout;
 
-	#[test]
-	fn it_works() {
-		let result = add(2, 2);
-		assert_eq!(result, 4);
-	}
-}
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct InputUpdate;

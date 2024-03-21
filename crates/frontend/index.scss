@@ -2,9 +2,6 @@ body {
 	background: rgba(45, 45, 45, 0.6);
 	color: white;
 }
-.heading {
-	text-align: center;
-}
 
 @mixin glyph_mask {
 	--glyph: "";
@@ -29,4 +26,10 @@ body {
 	--offset-y: calc(var(--scale-y) * var(--y));
 	left: calc(50% + var(--offset-x));
 	top: calc(50% + var(--offset-y));
+}
+.key[side="left"] {
+	--scale-x: -1;
+}
+.key[side="right"] {
+	--scale-x: 1;
 }
