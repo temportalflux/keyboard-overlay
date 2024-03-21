@@ -7,7 +7,8 @@ use tauri::{CustomMenuItem, Manager, SystemTray, SystemTrayEvent, SystemTrayMenu
 use tauri_plugin_log::LogTarget;
 use tauri_plugin_positioner::WindowExt;
 
-static TRAY_LOAD_CONFIG: (&'static str, &'static str) = ("load_config", "Reload Config");
+static TRAY_OPEN_CONFIG_DIR: (&'static str, &'static str) = ("open_config_dir", "Open Config Folder");
+static TRAY_LOAD_CONFIG_FILE: (&'static str, &'static str) = ("load_config", "Reload Config");
 
 static TRAY_REFRESH_DEVICES: (&'static str, &'static str) = ("refresh_devices", "Refresh Devices");
 
@@ -80,6 +81,7 @@ fn layout() -> Layout {
 }
 
 fn main() -> Result<(), tauri::Error> {
+	// TODO: generate a default config.kdl if one does not exist on load
 	tauri::Builder::default()
 		.plugin(
 			tauri_plugin_log::Builder::default()
@@ -114,7 +116,10 @@ fn main() -> Result<(), tauri::Error> {
 
 			let tray_menu = SystemTrayMenu::new()
 				.add_item(CustomMenuItem::new(MENU_TOGGLE_ID, MENU_TOGGLE_HIDE))
-				.add_item(CustomMenuItem::new(TRAY_LOAD_CONFIG.0, TRAY_LOAD_CONFIG.1))
+				.add_native_item(tauri::SystemTrayMenuItem::Separator)
+				.add_item(CustomMenuItem::new(TRAY_OPEN_CONFIG_DIR.0, TRAY_OPEN_CONFIG_DIR.1))
+				.add_item(CustomMenuItem::new(TRAY_LOAD_CONFIG_FILE.0, TRAY_LOAD_CONFIG_FILE.1))
+				.add_native_item(tauri::SystemTrayMenuItem::Separator)
 				.add_item(CustomMenuItem::new(TRAY_REFRESH_DEVICES.0, TRAY_REFRESH_DEVICES.1))
 				.add_native_item(tauri::SystemTrayMenuItem::Separator)
 				.add_item(CustomMenuItem::new(MENU_QUIT.0, MENU_QUIT.1));
@@ -133,7 +138,13 @@ fn main() -> Result<(), tauri::Error> {
 									let Some(window) = app.get_window("main") else { return };
 									window.trigger(EVENT_TOGGLE_WINDOW_VISIBILITY, None);
 								}
-								id if id == TRAY_LOAD_CONFIG.0 => {} // TODO: refresh config kdl from `tauri::api::path::config_dir()`
+								id if id == TRAY_OPEN_CONFIG_DIR.0 => {
+									let Some(config_dir) = tauri::api::path::app_config_dir(&app.config()) else { return };
+									let config_path_str = config_dir.display().to_string();
+									let Err(err) = tauri::api::shell::open(&app.shell_scope(), &config_path_str, None) else { return };
+									log::error!("failed to open config directory {config_path_str:?}: {err:?}");
+								}
+								id if id == TRAY_LOAD_CONFIG_FILE.0 => {} // TODO: refresh config kdl from `tauri::api::path::config_dir()`
 								id if id == TRAY_REFRESH_DEVICES.0 => {
 									// learning hidapi: https://github.com/libusb/hidapi https://www.ontrak.net/hidapic.htm
 									// could potentially read input from devices directly like this impl does
