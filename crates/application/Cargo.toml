@@ -21,6 +21,9 @@ shared = { path = "../shared" }
 kdlize = { path = "../kdlize" }
 kdl = { version = "5.0.0-alpha.0", git = "https://github.com/kdl-org/kdl-rs" }
 
+anyhow = "1.0"
+thiserror = "1.0"
+
 log = { version = "0.4", features = ["std", "serde"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

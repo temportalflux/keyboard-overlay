@@ -35,6 +35,22 @@ impl LayoutMutex {
 	}
 }
 
+fn load_layout(app_config: &tauri::Config) -> anyhow::Result<Option<shared::Layout>> {
+	let Some(config_path) = tauri::api::path::app_config_dir(&app_config) else { return Ok(None) };
+	let config_path = config_path.join("config.kdl");
+	// TODO: generate a default config.kdl if one does not exist
+	if !config_path.exists() {
+		return Ok(None);
+	}
+	let config_str = tauri::api::file::read_string(config_path)?;
+	let config_doc = config_str.parse::<kdl::KdlDocument>()?;
+	let mut doc_node = kdl::KdlNode::new("document");
+	doc_node.set_children(config_doc);
+	let mut node = kdlize::NodeReader::new_root(&doc_node, ());
+	let layout = shared::Layout::from_kdl(&mut node)?;
+	Ok(Some(layout))
+}
+
 fn main() -> Result<(), tauri::Error> {
 	tauri::Builder::default()
 		.plugin(
@@ -54,7 +70,7 @@ fn main() -> Result<(), tauri::Error> {
 				log::log!(target: record.target.as_str(), record.level, "{}", record.args);
 			});
 			// Wait for the frontend to become ready
-			app.once_global("ready", {
+			app.listen_global("ready", {
 				let app = app.handle();
 				move |_| {
 					log::debug!("received ready event from frontened");
@@ -67,21 +83,22 @@ fn main() -> Result<(), tauri::Error> {
 				}
 			});
 
-			if let Some(config_dir) = tauri::api::path::app_config_dir(&app.config()) {
-				let config_path = config_dir.join("config.kdl");
-				// TODO: generate a default config.kdl if one does not exist
-				if config_path.exists() {
-					let config_str = tauri::api::file::read_string(config_path)?;
-					let config_doc = config_str.parse::<kdl::KdlDocument>()?;
-					let mut doc_node = kdl::KdlNode::new("document");
-					doc_node.set_children(config_doc);
-					let mut node = kdlize::NodeReader::new_root(&doc_node, ());
-					let layout = shared::Layout::from_kdl(&mut node)?;
-					app.state::<LayoutMutex>().set(layout);
-				}
+			if let Ok(Some(layout)) = load_layout(&app.config()) {
+				app.state::<LayoutMutex>().set(layout.clone());
+				let _ = app.emit_all("layout", layout);
 			}
 
 			let window = app.get_window("main").ok_or(tauri::Error::InvalidWindowHandle)?;
+			window.set_size(tauri::LogicalSize::<f64> { width: 720.0, height: 300.0 })?;
+
+			window.move_window(tauri_plugin_positioner::Position::BottomLeft)?;
+			window.set_position({
+				let mut position = window.outer_position()?;
+				position.y -= 40;
+				position
+			})?;
+
+			window.set_ignore_cursor_events(true)?;
 
 			let tray_menu = SystemTrayMenu::new()
 				.add_item(CustomMenuItem::new(MENU_TOGGLE_ID, MENU_TOGGLE_HIDE))
@@ -118,7 +135,12 @@ fn main() -> Result<(), tauri::Error> {
 									};
 									log::error!("failed to open config directory {config_path_str:?}: {err:?}");
 								}
-								id if id == TRAY_LOAD_CONFIG_FILE.0 => {} // TODO: refresh config kdl from `tauri::api::path::config_dir()`
+								id if id == TRAY_LOAD_CONFIG_FILE.0 => {
+									if let Ok(Some(layout)) = load_layout(&app.config()) {
+										app.state::<LayoutMutex>().set(layout.clone());
+										let _ = app.emit_all("layout", layout);
+									}
+								}
 								id if id == TRAY_REFRESH_DEVICES.0 => {
 									// learning hidapi: https://github.com/libusb/hidapi https://www.ontrak.net/hidapic.htm
 									// could potentially read input from devices directly like this impl does
@@ -145,9 +167,6 @@ fn main() -> Result<(), tauri::Error> {
 					}
 				})
 				.build(app)?;
-
-			window.move_window(tauri_plugin_positioner::Position::BottomLeft)?;
-			window.set_ignore_cursor_events(true)?;
 
 			// Handle toggling the window visibility
 			window.listen(EVENT_TOGGLE_WINDOW_VISIBILITY, {

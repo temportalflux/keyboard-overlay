@@ -72,15 +72,16 @@ fn App() -> Html {
 	html! {<>
 		<div class="guideline x" />
 		<div class="guideline y" />
+		<div style="display: none;"><img src="https://raw.githubusercontent.com/tapioki/cephalopoda/main/Images/architeuthis_dux.png" style="height: 400px; margin-left: -150px; margin-top: 100px;" /></div>
 		{layout.as_ref().map(|layout| {
 			let layer = layout.get_layer(layout.default_layer())?;
 			let iter = layout.switches().iter();
-			let iter = iter.filter_map(|(switch, location)| Some((switch, location, layer.get_binding(switch)?)));
+			let iter = iter.map(|(switch, location)| (switch, location, layer.get_binding(switch)));
 			let switches = iter.map(|(switch, location, binding)| html!(
 				<KeySwitch
 					switch={switch.clone()}
 					location={*location}
-					binding={binding.clone()}
+					binding={binding.cloned()}
 					is_active={input_update.as_ref().map(|input| input.0.contains(switch)).unwrap_or(false)}
 				/>
 			)).collect::<Vec<_>>();
@@ -93,7 +94,7 @@ fn App() -> Html {
 pub struct KeySwitchProps {
 	pub switch: AttrValue,
 	pub location: shared::SwitchLocation,
-	pub binding: shared::KeyBinding,
+	pub binding: Option<shared::KeyBinding>,
 	pub is_active: bool,
 }
 
@@ -121,6 +122,7 @@ fn KeySwitch(
 		false => InputGlyphStyle::Outline,
 		true => InputGlyphStyle::Fill,
 	};
+	let binding = binding.clone().unwrap_or_default();
 	html!(<div id={switch.clone()} {class} {style} side={location.side.as_ref().map(Side::to_string)}>
 		<InputGlyph name={binding.key.clone()} source={binding.source} style={glyph_style} />
 	</div>)

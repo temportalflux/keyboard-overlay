@@ -6,7 +6,6 @@
 	"terminal.integrated.defaultProfile.windows": "Git Bash",
 	"editor.detectIndentation": false,
 	"rust-analyzer.showUnlinkedFileNotification": false,
-	"rust-analyzer.cargo.target": "wasm32-unknown-unknown",
 	"rust-analyzer.server.extraEnv": {
 		"CARGO_TARGET_DIR": "target_analyzer"
 	},

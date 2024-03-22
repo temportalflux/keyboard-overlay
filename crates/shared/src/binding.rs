@@ -6,6 +6,12 @@ pub struct KeyBinding {
 	pub source: InputSource,
 }
 
+impl Default for KeyBinding {
+	fn default() -> Self {
+		Self { key: "empty".into(), source: InputSource::Keyboard }
+	}
+}
+
 impl kdlize::FromKdl<()> for KeyBinding {
 	type Error = anyhow::Error;
 
