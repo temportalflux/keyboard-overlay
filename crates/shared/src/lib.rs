@@ -1,8 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
-mod binding;
-pub use binding::*;
 mod layout;
 pub use layout::*;
 mod switch;

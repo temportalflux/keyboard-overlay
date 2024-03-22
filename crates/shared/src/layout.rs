@@ -1,4 +1,4 @@
-use crate::{KeyBinding, SwitchLocation};
+use crate::SwitchLocation;
 use kdlize::{ext::DocumentExt, FromKdl};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -54,11 +54,11 @@ impl FromKdl<()> for Layout {
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Layer {
-	bindings: HashMap<String, KeyBinding>,
+	bindings: HashMap<String, String>,
 }
 
 impl Layer {
-	pub fn get_binding(&self, switch: impl AsRef<str>) -> Option<&KeyBinding> {
+	pub fn get_binding(&self, switch: impl AsRef<str>) -> Option<&String> {
 		self.bindings.get(switch.as_ref())
 	}
 }
@@ -70,7 +70,7 @@ impl FromKdl<()> for Layer {
 		let mut bindings = HashMap::new();
 		for mut node in node.query_all("scope() > bind")? {
 			let switch_id = node.next_str_req()?.to_owned();
-			let binding = KeyBinding::from_kdl(&mut node)?;
+			let binding = node.next_str_req()?.to_owned();
 			bindings.insert(switch_id, binding);
 		}
 		Ok(Self { bindings })

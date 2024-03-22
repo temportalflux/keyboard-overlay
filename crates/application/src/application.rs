@@ -1,12 +1,8 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use kdlize::FromKdl;
 use shared::InputUpdate;
-use std::{
-	collections::{HashMap, HashSet},
-	sync::Mutex,
-};
+use std::collections::{HashMap, HashSet};
 use tauri::{CustomMenuItem, Manager, SystemTray, SystemTrayEvent, SystemTrayMenu};
 use tauri_plugin_log::LogTarget;
 use tauri_plugin_positioner::WindowExt;
@@ -23,35 +19,20 @@ static EVENT_TOGGLE_WINDOW_VISIBILITY: &'static str = "toggle_window_visibility"
 
 static MENU_QUIT: (&'static str, &'static str) = ("quit", "Quit");
 
-#[derive(Default)]
-struct LayoutMutex(Mutex<shared::Layout>);
-impl LayoutMutex {
-	fn get(&self) -> shared::Layout {
-		self.0.lock().unwrap().clone()
-	}
+mod config;
+pub use config::*;
 
-	fn set(&self, layout: shared::Layout) {
-		*self.0.lock().unwrap() = layout;
+trait ManagerExt<R: tauri::Runtime> {
+	fn emit_and_trigger<S: serde::Serialize + Clone>(&self, event: &str, payload: S) -> tauri::Result<()>;
+}
+impl<M, R> ManagerExt<R> for M where M: tauri::Manager<R>, R: tauri::Runtime {
+	fn emit_and_trigger<S: serde::Serialize + Clone>(&self, event: &str, payload: S) -> tauri::Result<()> {
+		self.trigger_global(event, Some(serde_json::to_string(&payload)?));
+		self.emit_all(event, payload)
 	}
 }
 
-fn load_layout(app_config: &tauri::Config) -> anyhow::Result<Option<shared::Layout>> {
-	let Some(config_path) = tauri::api::path::app_config_dir(&app_config) else { return Ok(None) };
-	let config_path = config_path.join("config.kdl");
-	// TODO: generate a default config.kdl if one does not exist
-	if !config_path.exists() {
-		return Ok(None);
-	}
-	let config_str = tauri::api::file::read_string(config_path)?;
-	let config_doc = config_str.parse::<kdl::KdlDocument>()?;
-	let mut doc_node = kdl::KdlNode::new("document");
-	doc_node.set_children(config_doc);
-	let mut node = kdlize::NodeReader::new_root(&doc_node, ());
-	let layout = shared::Layout::from_kdl(&mut node)?;
-	Ok(Some(layout))
-}
-
-fn main() -> Result<(), tauri::Error> {
+fn main() -> anyhow::Result<()> {
 	tauri::Builder::default()
 		.plugin(
 			tauri_plugin_log::Builder::default()
@@ -59,7 +40,7 @@ fn main() -> Result<(), tauri::Error> {
 				.build(),
 		)
 		.plugin(tauri_plugin_positioner::init())
-		.manage(LayoutMutex::default())
+		.manage(ConfigMutex::default())
 		.setup(|app| {
 			// Listen for logging from the frontend
 			app.listen_global("log", |event| {
@@ -73,9 +54,8 @@ fn main() -> Result<(), tauri::Error> {
 			app.listen_global("ready", {
 				let app = app.handle();
 				move |_| {
-					log::debug!("received ready event from frontened");
-					log::debug!("emitting initialization events");
-					let _ = app.emit_all("layout", app.state::<LayoutMutex>().get());
+					log::info!("received ready event from frontened");
+					let _ = app.emit_all("layout", app.state::<ConfigMutex>().get().layout);
 					let _ = app.emit_all(
 						"input",
 						InputUpdate(["l1".into(), "r2".into(), "r4".into(), "l3".into()].into()),
@@ -83,22 +63,13 @@ fn main() -> Result<(), tauri::Error> {
 				}
 			});
 
-			if let Ok(Some(layout)) = load_layout(&app.config()) {
-				app.state::<LayoutMutex>().set(layout.clone());
-				let _ = app.emit_all("layout", layout);
-			}
-
 			let window = app.get_window("main").ok_or(tauri::Error::InvalidWindowHandle)?;
-			window.set_size(tauri::LogicalSize::<f64> { width: 720.0, height: 300.0 })?;
-
-			window.move_window(tauri_plugin_positioner::Position::BottomLeft)?;
-			window.set_position({
-				let mut position = window.outer_position()?;
-				position.y -= 40;
-				position
-			})?;
-
 			window.set_ignore_cursor_events(true)?;
+
+			// Load the config as it exists on startup
+			if let Some(config) = load_config(&app.config())? {
+				set_config(&app.handle(), config)?;
+			}
 
 			let tray_menu = SystemTrayMenu::new()
 				.add_item(CustomMenuItem::new(MENU_TOGGLE_ID, MENU_TOGGLE_HIDE))
@@ -136,9 +107,14 @@ fn main() -> Result<(), tauri::Error> {
 									log::error!("failed to open config directory {config_path_str:?}: {err:?}");
 								}
 								id if id == TRAY_LOAD_CONFIG_FILE.0 => {
-									if let Ok(Some(layout)) = load_layout(&app.config()) {
-										app.state::<LayoutMutex>().set(layout.clone());
-										let _ = app.emit_all("layout", layout);
+									match load_config(&app.config()) {
+										Ok(Some(config)) => if let Err(err) = set_config(&app, config) {
+											log::error!("{err:?}");
+										},
+										Ok(None) => {},
+										Err(err) => {
+											log::error!("{err:?}");
+										}
 									}
 								}
 								id if id == TRAY_REFRESH_DEVICES.0 => {
@@ -191,6 +167,49 @@ fn main() -> Result<(), tauri::Error> {
 			_ => {}
 		})
 		.run(tauri::generate_context!())?;
+	// SetWindowsHookEx
+	Ok(())
+}
+
+fn set_config(app: &tauri::AppHandle<tauri::Wry>, config: Config) -> anyhow::Result<()> {
+	app.emit_all("layout", config.layout.clone())?;
+	apply_initial_window_location(&app, &config)?;
+	app.state::<ConfigMutex>().set(config);
+	Ok(())
+}
+
+fn apply_initial_window_location(app: &tauri::AppHandle<tauri::Wry>, config: &Config) -> anyhow::Result<()> {
+	let window = app.get_window("main").ok_or(tauri::Error::InvalidWindowHandle)?;
+
+	window.set_size(tauri::PhysicalSize::<u32> {
+		width: config.size.0,
+		height: config.size.1,
+	})?;
+
+	move_window_to_position(&window, config.location)?;
+
+	Ok(())
+}
+
+fn move_window_to_position(
+	window: &tauri::Window,
+	position: WindowPosition,
+) -> anyhow::Result<()> {
+	// Move the window to the correct monitor
+	let monitors = window.available_monitors()?;
+	let monitor = usize::min(position.monitor, monitors.len());
+	if let Some(monitor) = monitors.get(monitor) {
+		window.set_position(monitor.position().clone())?;
+	}
+	// Anchor it relative to that monitor
+	window.move_window(position.anchor.into())?;
+	// And offset it from the anchor by some amount
+	window.set_position({
+		let mut pos = window.outer_position()?;
+		pos.x += position.offset.0;
+		pos.y -= position.offset.1;
+		pos
+	})?;
 	Ok(())
 }
 

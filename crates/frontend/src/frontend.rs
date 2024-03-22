@@ -1,5 +1,5 @@
 use futures::StreamExt;
-use shared::{InputSource, InputUpdate, Layout, Side};
+use shared::{InputUpdate, Layout, Side};
 use tauri_sys::event::listen;
 use wasm_bindgen::prelude::*;
 use yew::prelude::*;
@@ -94,7 +94,7 @@ fn App() -> Html {
 pub struct KeySwitchProps {
 	pub switch: AttrValue,
 	pub location: shared::SwitchLocation,
-	pub binding: Option<shared::KeyBinding>,
+	pub binding: Option<String>,
 	pub is_active: bool,
 }
 
@@ -124,7 +124,7 @@ fn KeySwitch(
 	};
 	let binding = binding.clone().unwrap_or_default();
 	html!(<div id={switch.clone()} {class} {style} side={location.side.as_ref().map(Side::to_string)}>
-		<InputGlyph name={binding.key.clone()} source={binding.source} style={glyph_style} />
+		<InputGlyph name={binding.clone()} style={glyph_style} />
 	</div>)
 }
 
@@ -148,15 +148,14 @@ impl std::fmt::Display for InputGlyphStyle {
 
 #[derive(Clone, PartialEq, Properties)]
 pub struct InputGlyphProps {
-	pub source: InputSource,
 	pub name: AttrValue,
 	pub style: Option<InputGlyphStyle>,
 }
 
 #[function_component]
-pub fn InputGlyph(InputGlyphProps { source, name, style }: &InputGlyphProps) -> Html {
-	let mut class = classes!("input-glyph", source.to_string(), name);
-	let mut src = format!("assets/input-prompts/{source}");
+pub fn InputGlyph(InputGlyphProps { name, style }: &InputGlyphProps) -> Html {
+	let mut class = classes!("input-glyph", name);
+	let mut src = format!("assets/input-prompts");
 	if let Some(style) = style {
 		src += &format!("/{style}");
 		class.push(style.to_string());
