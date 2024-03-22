@@ -1,0 +1,10 @@
+<svg width="64" height="64" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+  <defs/>
+  <g>
+		<path stroke="none" fill="#FFFFFF" d="M16 8 L48 8 Q56 8 56 16 L56 48 Q56 56 48 56 L16 56 Q8 56 8 48 L8 16 Q8 8 16 8"/>
+    <path stroke="none" fill="#FFFFFF0"
+			transform="translate(-4, 30) rotate(-50)"
+			d="M26 20 L28 20 Q30 20 30 22 L30 28 Q30 30 28 30 L26 30 Q24 30 24 28 L24 22 Q24 20 26 20"
+		/>
+  </g>
+</svg>
