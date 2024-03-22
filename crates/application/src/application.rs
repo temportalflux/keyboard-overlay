@@ -163,11 +163,7 @@ fn main() -> anyhow::Result<()> {
 
 			Ok(())
 		})
-		.on_window_event(move |event| match event.event() {
-			_ => {}
-		})
 		.run(tauri::generate_context!())?;
-	// SetWindowsHookEx
 	Ok(())
 }
 
