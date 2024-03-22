@@ -59,7 +59,14 @@
 			"problemMatcher": []
 		},
 		{
-			"label": "8. [Cargo] Clean",
+			"label": "8. [tauri] Clear local data",
+			"type": "shell",
+			"command": "rm -rf \"$APPDATA/../Local/com.temportalflux.layered-key-map-display\"",
+			"group": "build",
+			"problemMatcher": []
+		},
+		{
+			"label": "9. [Cargo] Clean",
 			"command": "cargo",
 			"args": [ "clean" ],
 			"group": "build",

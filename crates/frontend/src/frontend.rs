@@ -32,6 +32,16 @@ fn main() {
 #[cfg(target_family = "windows")]
 fn main() {}
 
+fn sample_layout() -> anyhow::Result<Layout> {
+	static LOCAL_CONFIG: &'static str = include_str!("../../../config.kdl");
+	let config_doc = LOCAL_CONFIG.parse::<kdl::KdlDocument>()?;
+	let mut doc_node = kdl::KdlNode::new("document");
+	doc_node.set_children(config_doc);
+	let node = kdlize::NodeReader::new_root(&doc_node, ());
+	let layout = node.query_req_t("scope() > layout")?;
+	Ok(layout)
+}
+
 #[function_component]
 fn App() -> Html {
 	let layout = use_state_eq(|| None::<Layout>);
@@ -42,6 +52,7 @@ fn App() -> Html {
 	use_mount(move || {
 		if !is_bound() {
 			log::debug!("ignoring event listeners");
+			layout_handle.set(sample_layout().ok());
 			return;
 		}
 		log::debug!("mounting event listeners");

@@ -16,6 +16,9 @@ tauri-sys = { git = "https://github.com/JonasKruckenberg/tauri-sys", features=["
 shared = { path = "../shared", features=["wasm"] }
 log = { version = "0.4", features = ["std"] }
 
+kdlize = { path = "../kdlize" }
+kdl = { version = "5.0.0-alpha.0", git = "https://github.com/kdl-org/kdl-rs" }
+
 any-range = "0.1"
 anyhow = "1.0"
 thiserror = "1.0"
