@@ -1,15 +1,6 @@
 <svg width="64" height="64" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
   <defs/>
   <g>
-		<path stroke="none" fill="#FFFFFF" d="M16 8 L48 8 Q56 8 56 16 L56 48 Q56 56 48 56 L16 56 Q8 56 8 48 L8 16 Q8 8 16 8 "/>
-    <path stroke="none" fill="#000" d="M39 26 L29 42 26 42 25 41 25 38 35 22 38 22 39 23 39 26"/>
-    <path stroke="none" fill="#000"
-			transform="translate(6, 0)"
-			d="M31 36 L33 36 Q35 36 35 38 L35 40 Q35 42 33 42 L31 42 Q29 42 29 40 L29 38 Q29 36 31 36"
-		/>
-		<path stroke="none" fill="#000"
-			transform="translate(-6, -14)"
-			d="M31 36 L33 36 Q35 36 35 38 L35 40 Q35 42 33 42 L31 42 Q29 42 29 40 L29 38 Q29 36 31 36"
-		/>
+		<path stroke="none" fill="#FFFFFF" d="M16 8 L48 8 Q56 8 56 16 L56 48 Q56 56 48 56 L16 56 Q8 56 8 48 L8 16 Q8 8 16 8 M 39 26 l 0 -3 l -1 -1 l -3 0 l -10 16 l 0 3 l 1 1 l 3 0 l 10 -16 M 37 36 q -2 0 -2 2 l 0 2 q 0 2 2 2 l 2 0 q 2 0 2 -2 l 0 -2 q 0 -2 -2 -2 l -2 0 M 24 22 q -2 0 -2 2 l 0 2 q 0 2 2 2 l 2 0 q 2 0 2 -2 l 0 -2 q 0 -2 -2 -2 l -2 0"/>
   </g>
 </svg>

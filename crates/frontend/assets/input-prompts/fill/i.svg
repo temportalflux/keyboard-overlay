@@ -1,7 +1,6 @@
 <svg width="64" height="64" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
   <defs/>
   <g>
-    <path stroke="none" fill="#FFFFFF" d="M16 8 L48 8 Q56 8 56 16 L56 48 Q56 56 48 56 L16 56 Q8 56 8 48 L8 16 Q8 8 16 8"/>
-    <path stroke="none" fill="#000" d="M38 22 L38 26 34 26 34 38 38 38 38 42 26 42 26 38 30 38 30 26 26 26 26 22 40 22"/>
+    <path stroke="none" fill="#FFFFFF" d="M16 8 L48 8 Q56 8 56 16 L56 48 Q56 56 48 56 L16 56 Q8 56 8 48 L8 16 Q8 8 16 8 M38,22L26,22L26,26L30,26L30,38L26,38L26,42L38,42L38,38L34,38L34,26L38,26L38,22"/>
   </g>
 </svg>
