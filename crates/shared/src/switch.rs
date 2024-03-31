@@ -1,3 +1,4 @@
+use kdlize::AsKdl;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
@@ -14,6 +15,18 @@ impl kdlize::FromKdl<()> for SwitchLocation {
 		let y = node.next_f64_req()? as f32;
 		let side = node.get_str_opt_t::<Side>("side")?;
 		Ok(Self { pos: (x, y), side })
+	}
+}
+
+impl AsKdl for SwitchLocation {
+	fn as_kdl(&self) -> kdlize::NodeBuilder {
+		let mut node = kdlize::NodeBuilder::default();
+		node.push_entry(self.pos.0 as f64);
+		node.push_entry(self.pos.1 as f64);
+		if let Some(side) = self.side {
+			node.push_entry(("side", side.to_string()));
+		}
+		node
 	}
 }
 

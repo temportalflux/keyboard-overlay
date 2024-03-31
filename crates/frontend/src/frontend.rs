@@ -58,7 +58,7 @@ fn App() -> Html {
 			return;
 		}
 		log::debug!("mounting event listeners");
-		
+
 		let icon_scale = icon_scale_handle.clone();
 		spawn_local("recv::scale", async move {
 			let mut stream = listen::<f64>("scale").await?;

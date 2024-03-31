@@ -1,7 +1,10 @@
 use derivative::Derivative;
-use kdlize::{ext::DocumentExt, FromKdl};
+use kdlize::{ext::DocumentExt, AsKdl, FromKdl, OmitIfEmpty};
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, sync::Mutex};
+
+// TODO: multiple layouts (consider naming layouts? figure out how to associate them with different keyboards)
+// TODO: load from url
 
 #[derive(Default)]
 pub struct ConfigMutex(Mutex<Config>);
@@ -32,6 +35,18 @@ pub fn load_config(app_config: &tauri::Config) -> anyhow::Result<Option<Config>>
 	Ok(Some(config))
 }
 
+pub fn save_config(app_config: &tauri::Config, config: &Config) -> anyhow::Result<()> {
+	let Some(config_path) = tauri::api::path::app_config_dir(&app_config) else {
+		return Ok(());
+	};
+	std::fs::create_dir_all(&config_path)?;
+	let config_path = config_path.join("config.kdl");
+	let contents = config.as_kdl().into_document().to_string();
+	let contents = contents.replace("    ", "\t");
+	std::fs::write(config_path, contents)?;
+	Ok(())
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Config {
 	default_profile: String,
@@ -45,17 +60,19 @@ impl Default for Config {
 		Self {
 			default_profile: "default".into(),
 			active_profile: "default".into(),
-			profiles: [
-				("default".into(), DisplayProfile {
+			profiles: [(
+				"default".into(),
+				DisplayProfile {
 					size: (800, 600),
 					scale: 1.0,
 					location: WindowPosition {
 						anchor: WindowAnchor::Center,
 						monitor: 0,
 						offset: (0, 0),
-					}
-				})
-			].into(),
+					},
+				},
+			)]
+			.into(),
 			layout: shared::Layout::default(),
 		}
 	}
@@ -82,7 +99,7 @@ impl Config {
 		!self.profiles.is_empty()
 	}
 
-	pub fn iter_profiles(&self) -> impl Iterator<Item=(&String, &DisplayProfile)> + '_ {
+	pub fn iter_profiles(&self) -> impl Iterator<Item = (&String, &DisplayProfile)> + '_ {
 		self.profiles.iter()
 	}
 
@@ -101,7 +118,9 @@ impl FromKdl<()> for Config {
 	fn from_kdl<'doc>(node: &mut kdlize::NodeReader<'doc, ()>) -> Result<Self, Self::Error> {
 		let default_profile = node.query_str_req("scope() > default_profile", 0)?.to_owned();
 		let active_profile = node.query_str_opt("scope() > active_profile", 0)?;
-		let active_profile = active_profile.map(str::to_owned).unwrap_or_else(|| default_profile.clone());
+		let active_profile = active_profile
+			.map(str::to_owned)
+			.unwrap_or_else(|| default_profile.clone());
 
 		let mut profiles = BTreeMap::new();
 		for mut node in node.query_all("scope() > profile")? {
@@ -111,8 +130,26 @@ impl FromKdl<()> for Config {
 		}
 
 		let layout = node.query_req_t("scope() > layout")?;
-		
-		Ok(Self { default_profile, active_profile, profiles, layout })
+
+		Ok(Self {
+			default_profile,
+			active_profile,
+			profiles,
+			layout,
+		})
+	}
+}
+
+impl AsKdl for Config {
+	fn as_kdl(&self) -> kdlize::NodeBuilder {
+		let mut node = kdlize::NodeBuilder::default();
+		node.push_child_t(("default_profile", &self.default_profile));
+		node.push_child_t(("active_profile", &self.active_profile, OmitIfEmpty));
+		for (name, profile) in &self.profiles {
+			node.push_child_t(("profile", &(name, profile)));
+		}
+		node.push_child_t(("layout", &self.layout));
+		node
 	}
 }
 
@@ -133,9 +170,26 @@ impl FromKdl<()> for DisplayProfile {
 			let h = node.next_i64_req()? as u32;
 			(w, h)
 		};
-		let location = node.query_req_t("scope() > location")?;		
+		let location = node.query_req_t("scope() > location")?;
 		let scale = node.query_f64_opt("scope() > scale", 0)?.unwrap_or(1.0);
 		Ok(Self { size, scale, location })
+	}
+}
+
+impl AsKdl for DisplayProfile {
+	fn as_kdl(&self) -> kdlize::NodeBuilder {
+		let mut node = kdlize::NodeBuilder::default();
+		node.push_child({
+			let mut node = kdlize::NodeBuilder::default();
+			node.push_entry(self.size.0 as i64);
+			node.push_entry(self.size.1 as i64);
+			node.build("size")
+		});
+		if self.scale != 1.0 {
+			node.push_child_t(("scale", &self.scale));
+		}
+		node.push_child_t(("location", &self.location));
+		node
 	}
 }
 
@@ -164,6 +218,23 @@ impl FromKdl<()> for WindowPosition {
 			anchor,
 			offset,
 		})
+	}
+}
+
+impl AsKdl for WindowPosition {
+	fn as_kdl(&self) -> kdlize::NodeBuilder {
+		let mut node = kdlize::NodeBuilder::default();
+		if self.monitor != 0 {
+			node.push_child_t(("monitor", &(self.monitor + 1)));
+		}
+		node.push_child_t(("anchor", &self.anchor.to_string()));
+		node.push_child({
+			let mut node = kdlize::NodeBuilder::default();
+			node.push_entry(self.offset.0 as i64);
+			node.push_entry(self.offset.1 as i64);
+			node.build("offset")
+		});
+		node
 	}
 }
 
@@ -212,6 +283,25 @@ impl std::str::FromStr for WindowAnchor {
 			"CenterRight" => Ok(Self::CenterRight),
 			_ => Err(InvalidWindowAnchor(s.to_owned())),
 		}
+	}
+}
+impl std::fmt::Display for WindowAnchor {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		write!(
+			f,
+			"{}",
+			match self {
+				Self::TopLeft => "TopLeft",
+				Self::TopCenter => "TopCenter",
+				Self::TopRight => "TopRight",
+				Self::BottomLeft => "BottomLeft",
+				Self::BottomCenter => "BottomCenter",
+				Self::BottomRight => "BottomRight",
+				Self::CenterLeft => "CenterLeft",
+				Self::Center => "Center",
+				Self::CenterRight => "CenterRight",
+			}
+		)
 	}
 }
 

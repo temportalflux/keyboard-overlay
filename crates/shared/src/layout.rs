@@ -1,13 +1,13 @@
 use crate::SwitchLocation;
-use kdlize::{ext::DocumentExt, FromKdl};
+use kdlize::{ext::DocumentExt, AsKdl, FromKdl};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Layout {
-	switches: HashMap<String, SwitchLocation>,
+	switches: BTreeMap<String, SwitchLocation>,
 	default_layer: String,
-	layers: HashMap<String, Layer>,
+	layers: BTreeMap<String, Layer>,
 }
 
 impl Layout {
@@ -15,7 +15,7 @@ impl Layout {
 		&self.default_layer
 	}
 
-	pub fn switches(&self) -> &HashMap<String, SwitchLocation> {
+	pub fn switches(&self) -> &BTreeMap<String, SwitchLocation> {
 		&self.switches
 	}
 
@@ -30,14 +30,14 @@ impl FromKdl<()> for Layout {
 	fn from_kdl<'doc>(node: &mut kdlize::NodeReader<'doc, ()>) -> Result<Self, Self::Error> {
 		let default_layer = node.query_str_req("scope() > default_layer", 0)?.to_owned();
 
-		let mut switches = HashMap::new();
+		let mut switches = BTreeMap::new();
 		for mut node in node.query_all("scope() > switch")? {
 			let name = node.next_str_req()?.to_owned();
 			let switch = SwitchLocation::from_kdl(&mut node)?;
 			switches.insert(name, switch);
 		}
 
-		let mut layers = HashMap::new();
+		let mut layers = BTreeMap::new();
 		for mut node in node.query_all("scope() > layer")? {
 			let name = node.next_str_req()?.to_owned();
 			let layer = Layer::from_kdl(&mut node)?;
@@ -52,9 +52,23 @@ impl FromKdl<()> for Layout {
 	}
 }
 
+impl AsKdl for Layout {
+	fn as_kdl(&self) -> kdlize::NodeBuilder {
+		let mut node = kdlize::NodeBuilder::default();
+		node.push_child_t(("default_layer", &self.default_layer));
+		for (name, switch) in &self.switches {
+			node.push_child_t(("switch", &(name, switch)));
+		}
+		for (name, layer) in &self.layers {
+			node.push_child_t(("layer", &(name, layer)));
+		}
+		node
+	}
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Layer {
-	bindings: HashMap<String, String>,
+	bindings: BTreeMap<String, String>,
 }
 
 impl Layer {
@@ -67,12 +81,22 @@ impl FromKdl<()> for Layer {
 	type Error = anyhow::Error;
 
 	fn from_kdl<'doc>(node: &mut kdlize::NodeReader<'doc, ()>) -> Result<Self, Self::Error> {
-		let mut bindings = HashMap::new();
+		let mut bindings = BTreeMap::new();
 		for mut node in node.query_all("scope() > bind")? {
 			let switch_id = node.next_str_req()?.to_owned();
 			let binding = node.next_str_req()?.to_owned();
 			bindings.insert(switch_id, binding);
 		}
 		Ok(Self { bindings })
+	}
+}
+
+impl AsKdl for Layer {
+	fn as_kdl(&self) -> kdlize::NodeBuilder {
+		let mut node = kdlize::NodeBuilder::default();
+		for (switch_id, binding) in &self.bindings {
+			node.push_child_t(("bind", &(switch_id, binding)));
+		}
+		node
 	}
 }

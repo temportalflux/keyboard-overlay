@@ -25,7 +25,11 @@ pub use config::*;
 trait ManagerExt<R: tauri::Runtime> {
 	fn emit_and_trigger<S: serde::Serialize + Clone>(&self, event: &str, payload: S) -> tauri::Result<()>;
 }
-impl<M, R> ManagerExt<R> for M where M: tauri::Manager<R>, R: tauri::Runtime {
+impl<M, R> ManagerExt<R> for M
+where
+	M: tauri::Manager<R>,
+	R: tauri::Runtime,
+{
 	fn emit_and_trigger<S: serde::Serialize + Clone>(&self, event: &str, payload: S) -> tauri::Result<()> {
 		self.trigger_global(event, Some(serde_json::to_string(&payload)?));
 		self.emit_all(event, payload)
@@ -106,17 +110,17 @@ fn main() -> anyhow::Result<()> {
 									};
 									log::error!("failed to open config directory {config_path_str:?}: {err:?}");
 								}
-								id if id == TRAY_LOAD_CONFIG_FILE.0 => {
-									match load_config(&app.config()) {
-										Ok(Some(config)) => if let Err(err) = set_config(&app, config) {
-											log::error!("{err:?}");
-										},
-										Ok(None) => {},
-										Err(err) => {
+								id if id == TRAY_LOAD_CONFIG_FILE.0 => match load_config(&app.config()) {
+									Ok(Some(config)) => {
+										if let Err(err) = set_config(&app, config) {
 											log::error!("{err:?}");
 										}
 									}
-								}
+									Ok(None) => {}
+									Err(err) => {
+										log::error!("{err:?}");
+									}
+								},
 								id if id == TRAY_REFRESH_DEVICES.0 => {
 									// learning hidapi: https://github.com/libusb/hidapi https://www.ontrak.net/hidapic.htm
 									// could potentially read input from devices directly like this impl does
@@ -137,12 +141,18 @@ fn main() -> anyhow::Result<()> {
 									log::trace!("{device_map:?}");
 								}
 								id if id.starts_with("profile:") => {
-									let Some(profile_name) = id.strip_prefix("profile:") else { return };
-									log::debug!("profile = {profile_name:?}");
+									let Some(profile_name) = id.strip_prefix("profile:") else {
+										return;
+									};
 									let config_state = app.state::<ConfigMutex>();
 									let mut config = config_state.get();
-									let Ok(()) = config.set_active_profile(profile_name) else { return };
-									let Ok(config_payload) = serde_json::to_string(&config) else { return };
+									let Ok(()) = config.set_active_profile(profile_name) else {
+										return;
+									};
+									let Ok(config_payload) = serde_json::to_string(&config) else {
+										return;
+									};
+									let _ = save_config(&app.config(), &config);
 									config_state.set(config);
 									// TODO: serialze and save config to disk
 									app.trigger_global("config:profile", Some(config_payload));
@@ -177,17 +187,21 @@ fn main() -> anyhow::Result<()> {
 				let app_handle = app.handle();
 				move |event| {
 					let Some(payload) = event.payload() else { return };
-					let Ok(config) = serde_json::from_str(payload) else { return };
+					let Ok(config) = serde_json::from_str(payload) else {
+						return;
+					};
 					let _ = app_handle.tray_handle().set_menu(build_system_tray_menu(&config));
 				}
 			});
-			
+
 			// When the config loads or the active display profile is changed, adjust the window accordingly
 			app.listen_global("config:profile", {
 				let app = app.handle();
 				move |event| {
 					let Some(payload) = event.payload() else { return };
-					let Ok(config) = serde_json::from_str::<Config>(payload) else { return };
+					let Ok(config) = serde_json::from_str::<Config>(payload) else {
+						return;
+					};
 					let Some(profile) = config.active_profile() else { return };
 					let _ = apply_initial_window_location(&app, profile);
 					let _ = app.emit_all("scale", profile.scale);
@@ -205,15 +219,17 @@ fn build_system_tray_menu(config: &Config) -> SystemTrayMenu {
 	menu = menu.add_item(CustomMenuItem::new(MENU_TOGGLE_ID, MENU_TOGGLE_HIDE));
 
 	if config.has_profiles() {
-		menu = menu.add_submenu(SystemTraySubmenu::new("Profiles", 
-			config.iter_profiles().fold(SystemTrayMenu::new(), |menu, (name, _profile)| {
-				menu.add_item(CustomMenuItem::new(format!("profile:{name}"), name))
-			})
+		menu = menu.add_submenu(SystemTraySubmenu::new(
+			"Profiles",
+			config
+				.iter_profiles()
+				.fold(SystemTrayMenu::new(), |menu, (name, _profile)| {
+					menu.add_item(CustomMenuItem::new(format!("profile:{name}"), name))
+				}),
 		));
 	}
 
-	menu
-		.add_native_item(tauri::SystemTrayMenuItem::Separator)
+	menu.add_native_item(tauri::SystemTrayMenuItem::Separator)
 		.add_item(CustomMenuItem::new(TRAY_LOAD_CONFIG_FILE.0, TRAY_LOAD_CONFIG_FILE.1))
 		.add_item(CustomMenuItem::new(TRAY_OPEN_CONFIG_DIR.0, TRAY_OPEN_CONFIG_DIR.1))
 		.add_native_item(tauri::SystemTrayMenuItem::Separator)
@@ -245,10 +261,7 @@ fn apply_initial_window_location(app: &tauri::AppHandle<tauri::Wry>, profile: &D
 	Ok(())
 }
 
-fn move_window_to_position(
-	window: &tauri::Window,
-	position: WindowPosition,
-) -> anyhow::Result<()> {
+fn move_window_to_position(window: &tauri::Window, position: WindowPosition) -> anyhow::Result<()> {
 	// Move the window to the correct monitor
 	let monitors = window.available_monitors()?;
 	let monitor = usize::min(position.monitor, monitors.len());
