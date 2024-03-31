@@ -3,7 +3,7 @@
 
 use shared::InputUpdate;
 use std::collections::{HashMap, HashSet};
-use tauri::{CustomMenuItem, Manager, SystemTray, SystemTrayEvent, SystemTrayMenu};
+use tauri::{CustomMenuItem, Manager, SystemTray, SystemTrayEvent, SystemTrayMenu, SystemTraySubmenu};
 use tauri_plugin_log::LogTarget;
 use tauri_plugin_positioner::WindowExt;
 
@@ -56,10 +56,12 @@ fn main() -> anyhow::Result<()> {
 				move |_| {
 					log::info!("received ready event from frontened");
 					let config = app.state::<ConfigMutex>().get();
-					let _ = app.emit_all("layout", shared::LayoutUpdate {
-						icon_scale: config.scale,
-						layout: config.layout,
-					});
+
+					let icon_scale = config.active_profile().map(|profile| profile.scale).unwrap_or(1.0);
+					let _ = app.emit_all("scale", icon_scale);
+
+					let _ = app.emit_all("layout", config.layout().clone());
+
 					let _ = app.emit_all(
 						"input",
 						InputUpdate(["l1".into(), "r2".into(), "r4".into(), "l3".into()].into()),
@@ -72,20 +74,14 @@ fn main() -> anyhow::Result<()> {
 
 			// Load the config as it exists on startup
 			if let Some(config) = load_config(&app.config())? {
+				if let Some(profile) = config.active_profile() {
+					apply_initial_window_location(&app.handle(), profile)?;
+				}
 				set_config(&app.handle(), config)?;
 			}
 
-			let tray_menu = SystemTrayMenu::new()
-				.add_item(CustomMenuItem::new(MENU_TOGGLE_ID, MENU_TOGGLE_HIDE))
-				.add_native_item(tauri::SystemTrayMenuItem::Separator)
-				.add_item(CustomMenuItem::new(TRAY_OPEN_CONFIG_DIR.0, TRAY_OPEN_CONFIG_DIR.1))
-				.add_item(CustomMenuItem::new(TRAY_LOAD_CONFIG_FILE.0, TRAY_LOAD_CONFIG_FILE.1))
-				.add_native_item(tauri::SystemTrayMenuItem::Separator)
-				.add_item(CustomMenuItem::new(TRAY_REFRESH_DEVICES.0, TRAY_REFRESH_DEVICES.1))
-				.add_native_item(tauri::SystemTrayMenuItem::Separator)
-				.add_item(CustomMenuItem::new(MENU_QUIT.0, MENU_QUIT.1));
 			SystemTray::new()
-				.with_menu(tray_menu)
+				.with_menu(build_system_tray_menu(&app.state::<ConfigMutex>().get()))
 				.on_event({
 					let app = app.handle();
 					move |event| {
@@ -140,6 +136,17 @@ fn main() -> anyhow::Result<()> {
 									}
 									log::trace!("{device_map:?}");
 								}
+								id if id.starts_with("profile:") => {
+									let Some(profile_name) = id.strip_prefix("profile:") else { return };
+									log::debug!("profile = {profile_name:?}");
+									let config_state = app.state::<ConfigMutex>();
+									let mut config = config_state.get();
+									let Ok(()) = config.set_active_profile(profile_name) else { return };
+									let Ok(config_payload) = serde_json::to_string(&config) else { return };
+									config_state.set(config);
+									// TODO: serialze and save config to disk
+									app.trigger_global("config:profile", Some(config_payload));
+								}
 								_ => {}
 							},
 							_ => {}
@@ -165,31 +172,75 @@ fn main() -> anyhow::Result<()> {
 				}
 			});
 
+			// When the config loads, rebuild the system tray menu (to account for display profiles loading)
+			app.listen_global("config", {
+				let app_handle = app.handle();
+				move |event| {
+					let Some(payload) = event.payload() else { return };
+					let Ok(config) = serde_json::from_str(payload) else { return };
+					let _ = app_handle.tray_handle().set_menu(build_system_tray_menu(&config));
+				}
+			});
+			
+			// When the config loads or the active display profile is changed, adjust the window accordingly
+			app.listen_global("config:profile", {
+				let app = app.handle();
+				move |event| {
+					let Some(payload) = event.payload() else { return };
+					let Ok(config) = serde_json::from_str::<Config>(payload) else { return };
+					let Some(profile) = config.active_profile() else { return };
+					let _ = apply_initial_window_location(&app, profile);
+					let _ = app.emit_all("scale", profile.scale);
+				}
+			});
+
 			Ok(())
 		})
 		.run(tauri::generate_context!())?;
 	Ok(())
 }
 
+fn build_system_tray_menu(config: &Config) -> SystemTrayMenu {
+	let mut menu = SystemTrayMenu::new();
+	menu = menu.add_item(CustomMenuItem::new(MENU_TOGGLE_ID, MENU_TOGGLE_HIDE));
+
+	if config.has_profiles() {
+		menu = menu.add_submenu(SystemTraySubmenu::new("Profiles", 
+			config.iter_profiles().fold(SystemTrayMenu::new(), |menu, (name, _profile)| {
+				menu.add_item(CustomMenuItem::new(format!("profile:{name}"), name))
+			})
+		));
+	}
+
+	menu
+		.add_native_item(tauri::SystemTrayMenuItem::Separator)
+		.add_item(CustomMenuItem::new(TRAY_LOAD_CONFIG_FILE.0, TRAY_LOAD_CONFIG_FILE.1))
+		.add_item(CustomMenuItem::new(TRAY_OPEN_CONFIG_DIR.0, TRAY_OPEN_CONFIG_DIR.1))
+		.add_native_item(tauri::SystemTrayMenuItem::Separator)
+		.add_item(CustomMenuItem::new(TRAY_REFRESH_DEVICES.0, TRAY_REFRESH_DEVICES.1))
+		.add_native_item(tauri::SystemTrayMenuItem::Separator)
+		.add_item(CustomMenuItem::new(MENU_QUIT.0, MENU_QUIT.1))
+}
+
 fn set_config(app: &tauri::AppHandle<tauri::Wry>, config: Config) -> anyhow::Result<()> {
-	app.emit_all("layout", shared::LayoutUpdate {
-		icon_scale: config.scale,
-		layout: config.layout.clone(),
-	})?;
-	apply_initial_window_location(&app, &config)?;
+	app.emit_all("layout", config.layout().clone())?;
+
+	let config_payload = serde_json::to_string(&config)?;
 	app.state::<ConfigMutex>().set(config);
+	app.trigger_global("config", Some(config_payload.clone()));
+	app.trigger_global("config:profile", Some(config_payload));
 	Ok(())
 }
 
-fn apply_initial_window_location(app: &tauri::AppHandle<tauri::Wry>, config: &Config) -> anyhow::Result<()> {
+fn apply_initial_window_location(app: &tauri::AppHandle<tauri::Wry>, profile: &DisplayProfile) -> anyhow::Result<()> {
 	let window = app.get_window("main").ok_or(tauri::Error::InvalidWindowHandle)?;
 
 	window.set_size(tauri::PhysicalSize::<u32> {
-		width: (config.size.0 as f64 * config.scale).floor() as u32,
-		height: (config.size.1 as f64 * config.scale).floor() as u32,
+		width: (profile.size.0 as f64 * profile.scale).floor() as u32,
+		height: (profile.size.1 as f64 * profile.scale).floor() as u32,
 	})?;
 
-	move_window_to_position(&window, config.location)?;
+	move_window_to_position(&window, profile.location)?;
 
 	Ok(())
 }

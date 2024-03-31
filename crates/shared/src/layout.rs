@@ -4,12 +4,6 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-pub struct LayoutUpdate {
-	pub icon_scale: f64,
-	pub layout: Layout,
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Layout {
 	switches: HashMap<String, SwitchLocation>,
 	default_layer: String,

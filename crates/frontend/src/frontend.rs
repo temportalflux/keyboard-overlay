@@ -1,5 +1,5 @@
 use futures::StreamExt;
-use shared::{InputUpdate, Layout, LayoutUpdate, Side};
+use shared::{InputUpdate, Layout, Side};
 use tauri_sys::event::listen;
 use wasm_bindgen::prelude::*;
 use yew::prelude::*;
@@ -58,16 +58,22 @@ fn App() -> Html {
 			return;
 		}
 		log::debug!("mounting event listeners");
-
+		
 		let icon_scale = icon_scale_handle.clone();
+		spawn_local("recv::scale", async move {
+			let mut stream = listen::<f64>("scale").await?;
+			while let Some(event) = stream.next().await {
+				icon_scale.set(event.payload);
+			}
+			Ok(()) as anyhow::Result<()>
+		});
+
 		let layout = layout_handle.clone();
 		spawn_local("recv::layout", async move {
-			let mut stream = listen::<LayoutUpdate>("layout").await?;
+			let mut stream = listen::<Layout>("layout").await?;
 			while let Some(event) = stream.next().await {
-				let update = event.payload;
 				//log::debug!(target: "recv::layout", "layout update: {:?}", event.payload);
-				icon_scale.set(update.icon_scale);
-				layout.set(Some(update.layout));
+				layout.set(Some(event.payload));
 			}
 			Ok(()) as anyhow::Result<()>
 		});

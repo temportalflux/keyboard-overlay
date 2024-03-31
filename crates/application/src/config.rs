@@ -1,7 +1,7 @@
 use derivative::Derivative;
 use kdlize::{ext::DocumentExt, FromKdl};
 use serde::{Deserialize, Serialize};
-use std::sync::Mutex;
+use std::{collections::BTreeMap, sync::Mutex};
 
 #[derive(Default)]
 pub struct ConfigMutex(Mutex<Config>);
@@ -20,7 +20,6 @@ pub fn load_config(app_config: &tauri::Config) -> anyhow::Result<Option<Config>>
 		return Ok(None);
 	};
 	let config_path = config_path.join("config.kdl");
-	// TODO: generate a default config.kdl if one does not exist
 	if !config_path.exists() {
 		return Ok(None);
 	}
@@ -33,15 +32,98 @@ pub fn load_config(app_config: &tauri::Config) -> anyhow::Result<Option<Config>>
 	Ok(Some(config))
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Config {
-	pub size: (u32, u32),
-	pub location: WindowPosition,
-	pub scale: f64,
-	pub layout: shared::Layout,
+	default_profile: String,
+	active_profile: String,
+	profiles: BTreeMap<String, DisplayProfile>,
+	layout: shared::Layout,
+}
+
+impl Default for Config {
+	fn default() -> Self {
+		Self {
+			default_profile: "default".into(),
+			active_profile: "default".into(),
+			profiles: [
+				("default".into(), DisplayProfile {
+					size: (800, 600),
+					scale: 1.0,
+					location: WindowPosition {
+						anchor: WindowAnchor::Center,
+						monitor: 0,
+						offset: (0, 0),
+					}
+				})
+			].into(),
+			layout: shared::Layout::default(),
+		}
+	}
+}
+
+impl Config {
+	pub fn default_profile_id(&self) -> &String {
+		&self.default_profile
+	}
+
+	pub fn active_profile(&self) -> Option<&DisplayProfile> {
+		self.profile(&self.active_profile)
+	}
+
+	pub fn set_active_profile(&mut self, name: impl AsRef<str>) -> Result<(), anyhow::Error> {
+		if !self.profiles.contains_key(name.as_ref()) {
+			return Err(anyhow::Error::msg("Invalid profile name"));
+		}
+		self.active_profile = name.as_ref().to_owned();
+		Ok(())
+	}
+
+	pub fn has_profiles(&self) -> bool {
+		!self.profiles.is_empty()
+	}
+
+	pub fn iter_profiles(&self) -> impl Iterator<Item=(&String, &DisplayProfile)> + '_ {
+		self.profiles.iter()
+	}
+
+	pub fn profile(&self, key: impl AsRef<str>) -> Option<&DisplayProfile> {
+		self.profiles.get(key.as_ref())
+	}
+
+	pub fn layout(&self) -> &shared::Layout {
+		&self.layout
+	}
 }
 
 impl FromKdl<()> for Config {
+	type Error = anyhow::Error;
+
+	fn from_kdl<'doc>(node: &mut kdlize::NodeReader<'doc, ()>) -> Result<Self, Self::Error> {
+		let default_profile = node.query_str_req("scope() > default_profile", 0)?.to_owned();
+		let active_profile = node.query_str_opt("scope() > active_profile", 0)?;
+		let active_profile = active_profile.map(str::to_owned).unwrap_or_else(|| default_profile.clone());
+
+		let mut profiles = BTreeMap::new();
+		for mut node in node.query_all("scope() > profile")? {
+			let name = node.next_str_req()?.to_owned();
+			let layer = DisplayProfile::from_kdl(&mut node)?;
+			profiles.insert(name, layer);
+		}
+
+		let layout = node.query_req_t("scope() > layout")?;
+		
+		Ok(Self { default_profile, active_profile, profiles, layout })
+	}
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct DisplayProfile {
+	pub size: (u32, u32),
+	pub location: WindowPosition,
+	pub scale: f64,
+}
+
+impl FromKdl<()> for DisplayProfile {
 	type Error = anyhow::Error;
 
 	fn from_kdl<'doc>(node: &mut kdlize::NodeReader<'doc, ()>) -> Result<Self, Self::Error> {
@@ -53,8 +135,7 @@ impl FromKdl<()> for Config {
 		};
 		let location = node.query_req_t("scope() > location")?;		
 		let scale = node.query_f64_opt("scope() > scale", 0)?.unwrap_or(1.0);
-		let layout = node.query_req_t("scope() > layout")?;
-		Ok(Self { size, location, layout, scale })
+		Ok(Self { size, scale, location })
 	}
 }
 
