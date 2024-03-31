@@ -55,7 +55,11 @@ fn main() -> anyhow::Result<()> {
 				let app = app.handle();
 				move |_| {
 					log::info!("received ready event from frontened");
-					let _ = app.emit_all("layout", app.state::<ConfigMutex>().get().layout);
+					let config = app.state::<ConfigMutex>().get();
+					let _ = app.emit_all("layout", shared::LayoutUpdate {
+						icon_scale: config.scale,
+						layout: config.layout,
+					});
 					let _ = app.emit_all(
 						"input",
 						InputUpdate(["l1".into(), "r2".into(), "r4".into(), "l3".into()].into()),
@@ -64,7 +68,7 @@ fn main() -> anyhow::Result<()> {
 			});
 
 			let window = app.get_window("main").ok_or(tauri::Error::InvalidWindowHandle)?;
-			window.set_ignore_cursor_events(true)?;
+			//window.set_ignore_cursor_events(true)?;
 
 			// Load the config as it exists on startup
 			if let Some(config) = load_config(&app.config())? {
@@ -168,7 +172,10 @@ fn main() -> anyhow::Result<()> {
 }
 
 fn set_config(app: &tauri::AppHandle<tauri::Wry>, config: Config) -> anyhow::Result<()> {
-	app.emit_all("layout", config.layout.clone())?;
+	app.emit_all("layout", shared::LayoutUpdate {
+		icon_scale: config.scale,
+		layout: config.layout.clone(),
+	})?;
 	apply_initial_window_location(&app, &config)?;
 	app.state::<ConfigMutex>().set(config);
 	Ok(())
@@ -178,8 +185,8 @@ fn apply_initial_window_location(app: &tauri::AppHandle<tauri::Wry>, config: &Co
 	let window = app.get_window("main").ok_or(tauri::Error::InvalidWindowHandle)?;
 
 	window.set_size(tauri::PhysicalSize::<u32> {
-		width: config.size.0,
-		height: config.size.1,
+		width: (config.size.0 as f64 * config.scale).floor() as u32,
+		height: (config.size.1 as f64 * config.scale).floor() as u32,
 	})?;
 
 	move_window_to_position(&window, config.location)?;

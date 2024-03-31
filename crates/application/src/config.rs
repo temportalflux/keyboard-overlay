@@ -37,6 +37,7 @@ pub fn load_config(app_config: &tauri::Config) -> anyhow::Result<Option<Config>>
 pub struct Config {
 	pub size: (u32, u32),
 	pub location: WindowPosition,
+	pub scale: f64,
 	pub layout: shared::Layout,
 }
 
@@ -51,8 +52,9 @@ impl FromKdl<()> for Config {
 			(w, h)
 		};
 		let location = node.query_req_t("scope() > location")?;		
+		let scale = node.query_f64_opt("scope() > scale", 0)?.unwrap_or(1.0);
 		let layout = node.query_req_t("scope() > layout")?;
-		Ok(Self { size, location, layout })
+		Ok(Self { size, location, layout, scale })
 	}
 }
 

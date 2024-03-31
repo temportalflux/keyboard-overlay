@@ -1,3 +1,11 @@
+html {
+	-ms-overflow-style: none;
+	scrollbar-width: none;
+}
+html::-webkit-scrollbar {
+	display: none;
+}
+
 body {
 	background: rgba(45, 45, 45, 0.6);
 	color: white;
@@ -42,16 +50,19 @@ body {
 	--scale-x: calc(var(--scale) * 1);
 	--scale-y: calc(var(--scale) * -1);
 	position: absolute;
-	--offset-x: calc(var(--scale-x) * var(--x));
-	--offset-y: calc(var(--scale-y) * var(--y));
-	--center-x: calc(0.5 * var(--width));
-	--center-y: calc(0.5 * var(--height));
+	--offset-x: calc(var(--scale-x) * var(--x) * var(--icon-scale));
+	--offset-y: calc(var(--scale-y) * var(--y) * var(--icon-scale));
+	--center-x: calc(0.5 * var(--width) * var(--icon-scale));
+	--center-y: calc(0.5 * var(--height) * var(--icon-scale));
 	left: calc(50% + var(--offset-x) - var(--center-x));
 	top: calc(50% + var(--offset-y) - var(--center-y));
+	width: calc(var(--width) * var(--icon-scale));
+	height: calc(var(--height) * var(--icon-scale));
 
 	> .input-glyph {
 		width: var(--width);
 		height: var(--height);
+		transform: translate(calc(-0.25 * var(--width)), calc(-0.25 * var(--height))) scale(var(--icon-scale));
 	}
 }
 .key[side="left"] {

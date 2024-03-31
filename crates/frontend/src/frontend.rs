@@ -1,5 +1,5 @@
 use futures::StreamExt;
-use shared::{InputUpdate, Layout, Side};
+use shared::{InputUpdate, Layout, LayoutUpdate, Side};
 use tauri_sys::event::listen;
 use wasm_bindgen::prelude::*;
 use yew::prelude::*;
@@ -44,9 +44,11 @@ fn sample_layout() -> anyhow::Result<Layout> {
 
 #[function_component]
 fn App() -> Html {
+	let icon_scale = use_state_eq(|| 1.0f64);
 	let layout = use_state_eq(|| None::<Layout>);
 	let input_update = use_state_eq(|| None::<InputUpdate>);
 
+	let icon_scale_handle = icon_scale.clone();
 	let layout_handle = layout.clone();
 	let input_handle = input_update.clone();
 	use_mount(move || {
@@ -57,12 +59,15 @@ fn App() -> Html {
 		}
 		log::debug!("mounting event listeners");
 
+		let icon_scale = icon_scale_handle.clone();
 		let layout = layout_handle.clone();
 		spawn_local("recv::layout", async move {
-			let mut stream = listen::<Layout>("layout").await?;
+			let mut stream = listen::<LayoutUpdate>("layout").await?;
 			while let Some(event) = stream.next().await {
+				let update = event.payload;
 				//log::debug!(target: "recv::layout", "layout update: {:?}", event.payload);
-				layout.set(Some(event.payload));
+				icon_scale.set(update.icon_scale);
+				layout.set(Some(update.layout));
 			}
 			Ok(()) as anyhow::Result<()>
 		});
@@ -80,24 +85,28 @@ fn App() -> Html {
 		spawn_local("ready", tauri_sys::event::emit("ready", &()));
 	});
 
+	let layout_style = Style::default().with("--icon-scale", *icon_scale);
+
 	html! {<>
 		<div class="guideline x" />
 		<div class="guideline y" />
 		<div style="display: none;"><img src="https://raw.githubusercontent.com/tapioki/cephalopoda/main/Images/architeuthis_dux.png" style="height: 400px; margin-left: -150px; margin-top: 100px;" /></div>
-		{layout.as_ref().map(|layout| {
-			let layer = layout.get_layer(layout.default_layer())?;
-			let iter = layout.switches().iter();
-			let iter = iter.map(|(switch, location)| (switch, location, layer.get_binding(switch)));
-			let switches = iter.map(|(switch, location, binding)| html!(
-				<KeySwitch
-					switch={switch.clone()}
-					location={*location}
-					binding={binding.cloned()}
-					is_active={input_update.as_ref().map(|input| input.0.contains(switch)).unwrap_or(false)}
-				/>
-			)).collect::<Vec<_>>();
-			Some(html!(<>{switches}</>))
-		}).flatten()}
+		<div style={layout_style}>
+			{layout.as_ref().map(|layout| {
+				let layer = layout.get_layer(layout.default_layer())?;
+				let iter = layout.switches().iter();
+				let iter = iter.map(|(switch, location)| (switch, location, layer.get_binding(switch)));
+				let switches = iter.map(|(switch, location, binding)| html!(
+					<KeySwitch
+						switch={switch.clone()}
+						location={*location}
+						binding={binding.cloned()}
+						is_active={input_update.as_ref().map(|input| input.0.contains(switch)).unwrap_or(false)}
+					/>
+				)).collect::<Vec<_>>();
+				Some(html!(<>{switches}</>))
+			}).flatten()}
+		</div>
 	</>}
 }
 
