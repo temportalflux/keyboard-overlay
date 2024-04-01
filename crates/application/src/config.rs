@@ -27,12 +27,23 @@ pub fn load_config(app_config: &tauri::Config) -> anyhow::Result<Option<Config>>
 		return Ok(None);
 	}
 	let config_str = tauri::api::file::read_string(config_path)?;
+	let config = parse_config_kdl(&config_str)?;
+	Ok(Some(config))
+}
+
+pub fn parse_config_kdl(config_str: &str) -> Result<Config, <Config as FromKdl<()>>::Error> {
 	let config_doc = config_str.parse::<kdl::KdlDocument>()?;
 	let mut doc_node = kdl::KdlNode::new("document");
 	doc_node.set_children(config_doc);
 	let mut node = kdlize::NodeReader::new_root(&doc_node, ());
 	let config = Config::from_kdl(&mut node)?;
-	Ok(Some(config))
+	Ok(config)
+}
+
+pub fn serialize_config_kdl(config: &Config) -> String {
+	let contents = config.as_kdl().into_document().to_string();
+	let contents = contents.replace("    ", "\t");
+	contents
 }
 
 pub fn save_config(app_config: &tauri::Config, config: &Config) -> anyhow::Result<()> {
@@ -41,9 +52,7 @@ pub fn save_config(app_config: &tauri::Config, config: &Config) -> anyhow::Resul
 	};
 	std::fs::create_dir_all(&config_path)?;
 	let config_path = config_path.join("config.kdl");
-	let contents = config.as_kdl().into_document().to_string();
-	let contents = contents.replace("    ", "\t");
-	std::fs::write(config_path, contents)?;
+	std::fs::write(config_path, serialize_config_kdl(config))?;
 	Ok(())
 }
 
@@ -109,6 +118,10 @@ impl Config {
 
 	pub fn layout(&self) -> &shared::Layout {
 		&self.layout
+	}
+
+	pub fn clear_state(&mut self) {
+		self.active_profile.clear();
 	}
 }
 

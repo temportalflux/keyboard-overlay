@@ -7,8 +7,10 @@ use tauri::{CustomMenuItem, Manager, SystemTray, SystemTrayEvent, SystemTrayMenu
 use tauri_plugin_log::LogTarget;
 use tauri_plugin_positioner::WindowExt;
 
-static TRAY_OPEN_CONFIG_DIR: (&'static str, &'static str) = ("open_config_dir", "Open Config Folder");
-static TRAY_LOAD_CONFIG_FILE: (&'static str, &'static str) = ("load_config", "Reload Config");
+static TRAY_CONFIG_IMPORT: (&'static str, &'static str) = ("config:import", "Import Config");
+static TRAY_CONFIG_EXPORT: (&'static str, &'static str) = ("config:export", "Export Config");
+static TRAY_CONFIG_OPEN_DIR: (&'static str, &'static str) = ("open_config_dir", "Open Config Folder");
+static TRAY_CONFIG_RELOAD: (&'static str, &'static str) = ("load_config", "Reload Config");
 
 static TRAY_REFRESH_DEVICES: (&'static str, &'static str) = ("refresh_devices", "Refresh Devices");
 
@@ -41,9 +43,19 @@ fn main() -> anyhow::Result<()> {
 		.plugin(
 			tauri_plugin_log::Builder::default()
 				.targets([LogTarget::LogDir, LogTarget::Stdout, LogTarget::Webview])
+				.filter(|record| {
+					static IGNORED_TARGETS: [&'static str; 1] = ["hyper_util"];
+					for ignored in IGNORED_TARGETS {
+						if record.target().contains(ignored) {
+							return false;
+						}
+					}
+					true
+				})
 				.build(),
 		)
 		.plugin(tauri_plugin_positioner::init())
+		.plugin(tauri_plugin_clipboard::init())
 		.manage(ConfigMutex::default())
 		.setup(|app| {
 			// Listen for logging from the frontend
@@ -99,7 +111,7 @@ fn main() -> anyhow::Result<()> {
 									let Some(window) = app.get_window("main") else { return };
 									window.trigger(EVENT_TOGGLE_WINDOW_VISIBILITY, None);
 								}
-								id if id == TRAY_OPEN_CONFIG_DIR.0 => {
+								id if id == TRAY_CONFIG_OPEN_DIR.0 => {
 									let Some(config_dir) = tauri::api::path::app_config_dir(&app.config()) else {
 										return;
 									};
@@ -110,7 +122,7 @@ fn main() -> anyhow::Result<()> {
 									};
 									log::error!("failed to open config directory {config_path_str:?}: {err:?}");
 								}
-								id if id == TRAY_LOAD_CONFIG_FILE.0 => match load_config(&app.config()) {
+								id if id == TRAY_CONFIG_RELOAD.0 => match load_config(&app.config()) {
 									Ok(Some(config)) => {
 										if let Err(err) = set_config(&app, config) {
 											log::error!("{err:?}");
@@ -154,8 +166,45 @@ fn main() -> anyhow::Result<()> {
 									};
 									let _ = save_config(&app.config(), &config);
 									config_state.set(config);
-									// TODO: serialze and save config to disk
 									app.trigger_global("config:profile", Some(config_payload));
+								}
+								id if id == TRAY_CONFIG_IMPORT.0 => {
+									let clipboard = app.state::<tauri_plugin_clipboard::ClipboardManager>();
+									
+									if let Ok(clipboard_file_path_strs) = clipboard.read_files() {
+										if let Some(file_path_str) = clipboard_file_path_strs.first() {
+											log::info!("Uploading config from local file {file_path_str:?}");
+											if let Ok(contents) = tauri::api::file::read_string(&file_path_str) {
+												let _ = upload_config(&app, &contents);
+											}
+										}
+									}
+									else if let Ok(clipboard_text) = clipboard.read_text() {
+										if let Ok(url) = reqwest::Url::parse(&clipboard_text) {
+											let app = app.clone();
+											tauri::async_runtime::spawn(async move {
+												log::info!("Uploading config from url {url}");
+												let response = reqwest::get(url).await?;
+												let contents = response.text().await?;
+												upload_config(&app, &contents)?;
+												// TODO: log errors
+												Ok(()) as anyhow::Result<()>
+											});
+										}
+										else {
+											log::info!("Uploading config contents from clipboard");
+											let _ = upload_config(&app, &clipboard_text);
+										}
+									}
+								}
+								id if id == TRAY_CONFIG_EXPORT.0 => {
+									let config_state = app.state::<ConfigMutex>();
+									let mut config = config_state.get();
+									// prep for export, clearing runtime data
+									config.clear_state();
+
+									let clipboard = app.state::<tauri_plugin_clipboard::ClipboardManager>();
+									let _ = clipboard.write_text(serialize_config_kdl(&config));
 								}
 								_ => {}
 							},
@@ -214,6 +263,13 @@ fn main() -> anyhow::Result<()> {
 	Ok(())
 }
 
+fn upload_config(app: &tauri::AppHandle<tauri::Wry>, contents: &str) -> anyhow::Result<()> {
+	let config = parse_config_kdl(contents)?;
+	save_config(&app.config(), &config)?;
+	set_config(&app, config)?;
+	Ok(())
+}
+
 fn build_system_tray_menu(config: &Config) -> SystemTrayMenu {
 	let mut menu = SystemTrayMenu::new();
 	menu = menu.add_item(CustomMenuItem::new(MENU_TOGGLE_ID, MENU_TOGGLE_HIDE));
@@ -230,8 +286,10 @@ fn build_system_tray_menu(config: &Config) -> SystemTrayMenu {
 	}
 
 	menu.add_native_item(tauri::SystemTrayMenuItem::Separator)
-		.add_item(CustomMenuItem::new(TRAY_LOAD_CONFIG_FILE.0, TRAY_LOAD_CONFIG_FILE.1))
-		.add_item(CustomMenuItem::new(TRAY_OPEN_CONFIG_DIR.0, TRAY_OPEN_CONFIG_DIR.1))
+		.add_item(CustomMenuItem::new(TRAY_CONFIG_IMPORT.0, TRAY_CONFIG_IMPORT.1))
+		.add_item(CustomMenuItem::new(TRAY_CONFIG_EXPORT.0, TRAY_CONFIG_EXPORT.1))
+		.add_item(CustomMenuItem::new(TRAY_CONFIG_RELOAD.0, TRAY_CONFIG_RELOAD.1))
+		.add_item(CustomMenuItem::new(TRAY_CONFIG_OPEN_DIR.0, TRAY_CONFIG_OPEN_DIR.1))
 		.add_native_item(tauri::SystemTrayMenuItem::Separator)
 		.add_item(CustomMenuItem::new(TRAY_REFRESH_DEVICES.0, TRAY_REFRESH_DEVICES.1))
 		.add_native_item(tauri::SystemTrayMenuItem::Separator)
