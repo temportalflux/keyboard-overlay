@@ -1,8 +1,9 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use std::{collections::{HashMap, HashSet}, sync::{Arc, RwLock}};
+
 use shared::InputUpdate;
-use std::collections::{HashMap, HashSet};
 use tauri::{CustomMenuItem, Manager, SystemTray, SystemTrayEvent, SystemTrayMenu, SystemTraySubmenu};
 use tauri_plugin_log::LogTarget;
 use tauri_plugin_positioner::WindowExt;
@@ -11,8 +12,6 @@ static TRAY_CONFIG_IMPORT: (&'static str, &'static str) = ("config:import", "Imp
 static TRAY_CONFIG_EXPORT: (&'static str, &'static str) = ("config:export", "Export Config");
 static TRAY_CONFIG_OPEN_DIR: (&'static str, &'static str) = ("open_config_dir", "Open Config Folder");
 static TRAY_CONFIG_RELOAD: (&'static str, &'static str) = ("load_config", "Reload Config");
-
-static TRAY_REFRESH_DEVICES: (&'static str, &'static str) = ("refresh_devices", "Refresh Devices");
 
 static MENU_TOGGLE_ID: &'static str = "toggle";
 static MENU_TOGGLE_HIDE: &'static str = "Hide";
@@ -38,7 +37,72 @@ where
 	}
 }
 
+#[derive(Clone, Default)]
+struct GlobalInputState(Arc<RwLock<InputState>>);
+#[derive(Default)]
+struct InputState {
+	app: Option<tauri::AppHandle<tauri::Wry>>,
+	switch_bindings: HashMap<rdev::Key, Arc<String>>,
+	active_switches: HashSet<String>,
+}
+
+impl GlobalInputState {
+	fn init_app(&self, handle: tauri::AppHandle<tauri::Wry>) {
+		let mut state = self.0.write().expect("failed to open writing on input state");
+		state.app = Some(handle);
+	}
+
+	fn update_bindings(&self, config: &Config) {
+		let mut state = self.0.write().expect("failed to open writing on input state");
+		for (switch_id, switch) in config.layout().switches() {
+			let key = switch_key_to_rdev(switch.os_key);
+			state.switch_bindings.insert(key, switch_id.clone().into());
+		}
+	}
+
+	fn handle(&self, event: &rdev::Event) {
+		let (key, is_pressed) = match event.event_type {
+			rdev::EventType::KeyPress(key) => (key, true),
+			rdev::EventType::KeyRelease(key) => (key, false),
+			_ => return,
+		};
+		
+		let mut state = self.0.write().expect("failed to open writing on input state");
+		
+		let Some(switch_id) = state.switch_bindings.get(&key) else { return };
+
+		let was_pressed = state.active_switches.contains(&**switch_id);
+		if is_pressed == was_pressed { return }
+
+		let switch_id = switch_id.clone();
+		if is_pressed {
+			state.active_switches.insert(switch_id.as_ref().clone());
+		}
+		else
+		{
+			state.active_switches.remove(&*switch_id.as_ref());
+		}
+		
+		let Some(app) = &state.app else { return };
+		log::debug!("{:?}", state.active_switches);
+		let _ = app.emit_all("input", InputUpdate(state.active_switches.clone()));
+	}
+}
+
 fn main() -> anyhow::Result<()> {
+	let global_input = GlobalInputState::default();
+	std::thread::spawn({
+		let input = global_input.clone();
+		move || {
+			if let Err(err) = rdev::grab(move |event| {
+				input.handle(&event);
+				Some(event)
+			}) {
+				log::error!(target: "rdev", "{err:?}");
+			}
+		}
+	});
+
 	tauri::Builder::default()
 		.plugin(
 			tauri_plugin_log::Builder::default()
@@ -57,6 +121,7 @@ fn main() -> anyhow::Result<()> {
 		.plugin(tauri_plugin_positioner::init())
 		.plugin(tauri_plugin_clipboard::init())
 		.manage(ConfigMutex::default())
+		.manage(global_input)
 		.setup(|app| {
 			// Listen for logging from the frontend
 			app.listen_global("log", |event| {
@@ -86,7 +151,26 @@ fn main() -> anyhow::Result<()> {
 			});
 
 			let window = app.get_window("main").ok_or(tauri::Error::InvalidWindowHandle)?;
-			//window.set_ignore_cursor_events(true)?;
+			window.set_ignore_cursor_events(true)?;
+
+			// Associate the app to global_input so that when input changes, it can be propagated to app events.
+			{
+				let global_input = app.state::<GlobalInputState>();
+				global_input.init_app(app.handle());
+			}
+			
+			// Listen for config changes to propagate them to the global input state
+			app.listen_global("config", {
+				let app = app.handle();
+				move |event| {
+					let Some(payload) = event.payload() else { return };
+					let Ok(config) = serde_json::from_str(payload) else {
+						return;
+					};
+					let global_input = app.state::<GlobalInputState>();
+					global_input.update_bindings(&config);
+				}
+			});
 
 			// Load the config as it exists on startup
 			if let Some(config) = load_config(&app.config())? {
@@ -133,25 +217,6 @@ fn main() -> anyhow::Result<()> {
 										log::error!("{err:?}");
 									}
 								},
-								id if id == TRAY_REFRESH_DEVICES.0 => {
-									// learning hidapi: https://github.com/libusb/hidapi https://www.ontrak.net/hidapic.htm
-									// could potentially read input from devices directly like this impl does
-									// https://github.com/todbot/hidapitester?tab=readme-ov-file#reading-and-writing-reports
-									let Ok(mut hid_api) = hidapi::HidApi::new() else { return };
-									let _ = hid_api.refresh_devices();
-									let mut device_map = HashMap::new();
-									for info in hid_api.device_list() {
-										let Some(device) = Device::from(info) else { continue };
-										if !device_map.contains_key(&device) {
-											device_map.insert(device.clone(), HashSet::<(u16, u16)>::default());
-										}
-										let Some(usage) = device_map.get_mut(&device) else {
-											continue;
-										};
-										usage.insert((info.usage(), info.usage_page()));
-									}
-									log::trace!("{device_map:?}");
-								}
 								id if id.starts_with("profile:") => {
 									let Some(profile_name) = id.strip_prefix("profile:") else {
 										return;
@@ -170,7 +235,7 @@ fn main() -> anyhow::Result<()> {
 								}
 								id if id == TRAY_CONFIG_IMPORT.0 => {
 									let clipboard = app.state::<tauri_plugin_clipboard::ClipboardManager>();
-									
+
 									if let Ok(clipboard_file_path_strs) = clipboard.read_files() {
 										if let Some(file_path_str) = clipboard_file_path_strs.first() {
 											log::info!("Uploading config from local file {file_path_str:?}");
@@ -178,8 +243,7 @@ fn main() -> anyhow::Result<()> {
 												let _ = upload_config(&app, &contents);
 											}
 										}
-									}
-									else if let Ok(clipboard_text) = clipboard.read_text() {
+									} else if let Ok(clipboard_text) = clipboard.read_text() {
 										if let Ok(url) = reqwest::Url::parse(&clipboard_text) {
 											let app = app.clone();
 											tauri::async_runtime::spawn(async move {
@@ -190,8 +254,7 @@ fn main() -> anyhow::Result<()> {
 												// TODO: log errors
 												Ok(()) as anyhow::Result<()>
 											});
-										}
-										else {
+										} else {
 											log::info!("Uploading config contents from clipboard");
 											let _ = upload_config(&app, &clipboard_text);
 										}
@@ -291,8 +354,6 @@ fn build_system_tray_menu(config: &Config) -> SystemTrayMenu {
 		.add_item(CustomMenuItem::new(TRAY_CONFIG_RELOAD.0, TRAY_CONFIG_RELOAD.1))
 		.add_item(CustomMenuItem::new(TRAY_CONFIG_OPEN_DIR.0, TRAY_CONFIG_OPEN_DIR.1))
 		.add_native_item(tauri::SystemTrayMenuItem::Separator)
-		.add_item(CustomMenuItem::new(TRAY_REFRESH_DEVICES.0, TRAY_REFRESH_DEVICES.1))
-		.add_native_item(tauri::SystemTrayMenuItem::Separator)
 		.add_item(CustomMenuItem::new(MENU_QUIT.0, MENU_QUIT.1))
 }
 
@@ -336,49 +397,4 @@ fn move_window_to_position(window: &tauri::Window, position: WindowPosition) -> 
 		pos
 	})?;
 	Ok(())
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-struct Device {
-	vendor_id: u16,
-	product_id: u16,
-	serial: String,
-	product_name: String,
-	manufacturer: String,
-	bus_type: BusType,
-}
-impl Device {
-	fn from(info: &hidapi::DeviceInfo) -> Option<Self> {
-		let serial = info.serial_number()?.trim();
-		let product_name = info.product_string()?.trim();
-		let manufacturer = info.manufacturer_string()?.trim();
-		Some(Self {
-			vendor_id: info.vendor_id(),
-			product_id: info.product_id(),
-			serial: serial.to_owned(),
-			product_name: product_name.to_owned(),
-			manufacturer: manufacturer.to_owned(),
-			bus_type: info.bus_type().into(),
-		})
-	}
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-enum BusType {
-	Unknown = 0x00,
-	Usb = 0x01,
-	Bluetooth = 0x02,
-	I2c = 0x03,
-	Spi = 0x04,
-}
-impl From<hidapi::BusType> for BusType {
-	fn from(value: hidapi::BusType) -> Self {
-		match value {
-			hidapi::BusType::Unknown => Self::Unknown,
-			hidapi::BusType::Usb => Self::Usb,
-			hidapi::BusType::Bluetooth => Self::Bluetooth,
-			hidapi::BusType::I2c => Self::I2c,
-			hidapi::BusType::Spi => Self::Spi,
-		}
-	}
 }

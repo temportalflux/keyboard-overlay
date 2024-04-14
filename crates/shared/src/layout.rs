@@ -1,11 +1,11 @@
-use crate::SwitchLocation;
+use crate::Switch;
 use kdlize::{ext::DocumentExt, AsKdl, FromKdl};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Layout {
-	switches: BTreeMap<String, SwitchLocation>,
+	switches: BTreeMap<String, Switch>,
 	default_layer: String,
 	layers: BTreeMap<String, Layer>,
 }
@@ -15,7 +15,7 @@ impl Layout {
 		&self.default_layer
 	}
 
-	pub fn switches(&self) -> &BTreeMap<String, SwitchLocation> {
+	pub fn switches(&self) -> &BTreeMap<String, Switch> {
 		&self.switches
 	}
 
@@ -33,7 +33,7 @@ impl FromKdl<()> for Layout {
 		let mut switches = BTreeMap::new();
 		for mut node in node.query_all("scope() > switch")? {
 			let name = node.next_str_req()?.to_owned();
-			let switch = SwitchLocation::from_kdl(&mut node)?;
+			let switch = Switch::from_kdl(&mut node)?;
 			switches.insert(name, switch);
 		}
 

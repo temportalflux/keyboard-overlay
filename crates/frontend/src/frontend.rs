@@ -101,13 +101,13 @@ fn App() -> Html {
 			{layout.as_ref().map(|layout| {
 				let layer = layout.get_layer(layout.default_layer())?;
 				let iter = layout.switches().iter();
-				let iter = iter.map(|(switch, location)| (switch, location, layer.get_binding(switch)));
-				let switches = iter.map(|(switch, location, binding)| html!(
+				let iter = iter.map(|(switch_id, switch)| (switch_id, switch, layer.get_binding(switch_id)));
+				let switches = iter.map(|(switch_id, switch, binding)| html!(
 					<KeySwitch
-						switch={switch.clone()}
-						location={*location}
+						switch_id={switch_id.clone()}
+						switch={*switch}
 						binding={binding.cloned()}
-						is_active={input_update.as_ref().map(|input| input.0.contains(switch)).unwrap_or(false)}
+						is_active={input_update.as_ref().map(|input| input.0.contains(switch_id)).unwrap_or(false)}
 					/>
 				)).collect::<Vec<_>>();
 				Some(html!(<>{switches}</>))
@@ -118,8 +118,8 @@ fn App() -> Html {
 
 #[derive(Clone, PartialEq, Properties)]
 pub struct KeySwitchProps {
-	pub switch: AttrValue,
-	pub location: shared::SwitchLocation,
+	pub switch_id: AttrValue,
+	pub switch: shared::Switch,
 	pub binding: Option<String>,
 	pub is_active: bool,
 }
@@ -127,15 +127,15 @@ pub struct KeySwitchProps {
 #[function_component]
 fn KeySwitch(
 	KeySwitchProps {
+		switch_id,
 		switch,
-		location,
 		binding,
 		is_active,
 	}: &KeySwitchProps,
 ) -> Html {
 	let class = classes!("key");
-	let mut pos = location.pos;
-	if location.side.is_some() {
+	let mut pos = switch.pos;
+	if switch.side.is_some() {
 		pos.0 = pos.0.abs();
 	}
 	let style = Style::from([
@@ -149,7 +149,7 @@ fn KeySwitch(
 		true => InputGlyphStyle::Fill,
 	};
 	let binding = binding.clone().unwrap_or_default();
-	html!(<div id={switch.clone()} {class} {style} side={location.side.as_ref().map(Side::to_string)}>
+	html!(<div id={switch_id.clone()} {class} {style} side={switch.side.as_ref().map(Side::to_string)}>
 		<InputGlyph name={binding.clone()} style={glyph_style} />
 	</div>)
 }
