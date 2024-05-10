@@ -147,6 +147,7 @@ impl GlobalInputState {
 
 	fn handle_event(&self, event: global_hotkey::GlobalHotKeyEvent) {
 		log::debug!("{event:?}");
+		// NOTE TO SELF: ACK why is this consuming the input??
 		let state = self.0.read().expect("failed to open writing on input state");
 		for (hotkey, bindings) in state.registered_hotkeys.iter_all() {
 			if hotkey.id() == event.id() {
