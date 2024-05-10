@@ -1,9 +1,7 @@
 use derivative::Derivative;
 use kdlize::{ext::DocumentExt, AsKdl, FromKdl, OmitIfEmpty};
 use serde::{Deserialize, Serialize};
-use std::{collections::BTreeMap, sync::Mutex};
-
-pub use global_hotkey::hotkey::{Code as HotKeyCode, HotKey as HotKey, Modifiers as HotKeyModifiers};
+use std::{collections::{BTreeMap, HashSet}, sync::Mutex};
 
 // TODO: multiple layouts (consider naming layouts? figure out how to associate them with different keyboards)
 // TODO: load from url
@@ -324,115 +322,114 @@ impl std::fmt::Display for WindowAnchor {
 #[error("Invalid window anchor {0:?}")]
 pub struct InvalidWindowAnchor(String);
 
-fn key_alias_to_code(alias: shared::KeyAlias) -> Option<HotKeyCode> {
+fn key_alias_to_code(alias: shared::KeyAlias) -> Option<rdev::Key> {
 	use shared::KeyAlias as Alias;
 	match alias {
-		Alias::Backquote => Some(HotKeyCode::Backquote),
-		Alias::Backslash => Some(HotKeyCode::Backslash),
-		Alias::BracketLeft => Some(HotKeyCode::BracketLeft),
-		Alias::BracketRight => Some(HotKeyCode::BracketRight),
-		Alias::Comma => Some(HotKeyCode::Comma),
-		Alias::Digit0 => Some(HotKeyCode::Digit0),
-		Alias::Digit1 => Some(HotKeyCode::Digit1),
-		Alias::Digit2 => Some(HotKeyCode::Digit2),
-		Alias::Digit3 => Some(HotKeyCode::Digit3),
-		Alias::Digit4 => Some(HotKeyCode::Digit4),
-		Alias::Digit5 => Some(HotKeyCode::Digit5),
-		Alias::Digit6 => Some(HotKeyCode::Digit6),
-		Alias::Digit7 => Some(HotKeyCode::Digit7),
-		Alias::Digit8 => Some(HotKeyCode::Digit8),
-		Alias::Digit9 => Some(HotKeyCode::Digit9),
-		Alias::Equal => Some(HotKeyCode::Equal),
-		Alias::KeyA => Some(HotKeyCode::KeyA),
-		Alias::KeyB => Some(HotKeyCode::KeyB),
-		Alias::KeyC => Some(HotKeyCode::KeyC),
-		Alias::KeyD => Some(HotKeyCode::KeyD),
-		Alias::KeyE => Some(HotKeyCode::KeyE),
-		Alias::KeyF => Some(HotKeyCode::KeyF),
-		Alias::KeyG => Some(HotKeyCode::KeyG),
-		Alias::KeyH => Some(HotKeyCode::KeyH),
-		Alias::KeyI => Some(HotKeyCode::KeyI),
-		Alias::KeyJ => Some(HotKeyCode::KeyJ),
-		Alias::KeyK => Some(HotKeyCode::KeyK),
-		Alias::KeyL => Some(HotKeyCode::KeyL),
-		Alias::KeyM => Some(HotKeyCode::KeyM),
-		Alias::KeyN => Some(HotKeyCode::KeyN),
-		Alias::KeyO => Some(HotKeyCode::KeyO),
-		Alias::KeyP => Some(HotKeyCode::KeyP),
-		Alias::KeyQ => Some(HotKeyCode::KeyQ),
-		Alias::KeyR => Some(HotKeyCode::KeyR),
-		Alias::KeyS => Some(HotKeyCode::KeyS),
-		Alias::KeyT => Some(HotKeyCode::KeyT),
-		Alias::KeyU => Some(HotKeyCode::KeyU),
-		Alias::KeyV => Some(HotKeyCode::KeyV),
-		Alias::KeyW => Some(HotKeyCode::KeyW),
-		Alias::KeyX => Some(HotKeyCode::KeyX),
-		Alias::KeyY => Some(HotKeyCode::KeyY),
-		Alias::KeyZ => Some(HotKeyCode::KeyZ),
-		Alias::Minus => Some(HotKeyCode::Minus),
-		Alias::Period => Some(HotKeyCode::Period),
-		Alias::Quote => Some(HotKeyCode::Quote),
-		Alias::Semicolon => Some(HotKeyCode::Semicolon),
-		Alias::Slash => Some(HotKeyCode::Slash),
-		Alias::AltLeft => None, // not currently supported; Some(HotKeyCode::AltLeft),
-		Alias::AltRight => None, // not currently supported; Some(HotKeyCode::AltRight),
-		Alias::Backspace => Some(HotKeyCode::Backspace),
-		Alias::CapsLock => Some(HotKeyCode::CapsLock),
-		Alias::ControlLeft => None, // not currently supported; Some(HotKeyCode::ControlLeft),
-		Alias::ControlRight => None, // not currently supported; Some(HotKeyCode::ControlRight),
-		Alias::Enter => Some(HotKeyCode::Enter),
-		Alias::MetaLeft => Some(HotKeyCode::MetaLeft),
-		Alias::MetaRight => Some(HotKeyCode::MetaRight),
-		Alias::ShiftLeft => None, // not currently supported; Some(HotKeyCode::ShiftLeft),
-		Alias::ShiftRight => None, // not currently supported; Some(HotKeyCode::ShiftRight),
-		Alias::Space => Some(HotKeyCode::Space),
-		Alias::Tab => Some(HotKeyCode::Tab),
-		Alias::Delete => Some(HotKeyCode::Delete),
-		Alias::End => Some(HotKeyCode::End),
-		Alias::Home => Some(HotKeyCode::Home),
-		Alias::Insert => Some(HotKeyCode::Insert),
-		Alias::PageDown => Some(HotKeyCode::PageDown),
-		Alias::PageUp => Some(HotKeyCode::PageUp),
-		Alias::ArrowDown => Some(HotKeyCode::ArrowDown),
-		Alias::ArrowLeft => Some(HotKeyCode::ArrowLeft),
-		Alias::ArrowRight => Some(HotKeyCode::ArrowRight),
-		Alias::ArrowUp => Some(HotKeyCode::ArrowUp),
-		Alias::Escape => Some(HotKeyCode::Escape),
-		Alias::F1 => Some(HotKeyCode::F1),
-		Alias::F2 => Some(HotKeyCode::F2),
-		Alias::F3 => Some(HotKeyCode::F3),
-		Alias::F4 => Some(HotKeyCode::F4),
-		Alias::F5 => Some(HotKeyCode::F5),
-		Alias::F6 => Some(HotKeyCode::F6),
-		Alias::F7 => Some(HotKeyCode::F7),
-		Alias::F8 => Some(HotKeyCode::F8),
-		Alias::F9 => Some(HotKeyCode::F9),
-		Alias::F10 => Some(HotKeyCode::F10),
-		Alias::F11 => Some(HotKeyCode::F11),
-		Alias::F12 => Some(HotKeyCode::F12),
-		Alias::F13 => Some(HotKeyCode::F13),
-		Alias::F14 => Some(HotKeyCode::F14),
-		Alias::F15 => Some(HotKeyCode::F15),
-		Alias::F16 => Some(HotKeyCode::F16),
-		Alias::F17 => Some(HotKeyCode::F17),
-		Alias::F18 => Some(HotKeyCode::F18),
-		Alias::F19 => Some(HotKeyCode::F19),
-		Alias::F20 => Some(HotKeyCode::F20),
-		Alias::F21 => Some(HotKeyCode::F21),
-		Alias::F22 => Some(HotKeyCode::F22),
-		Alias::F23 => Some(HotKeyCode::F23),
-		Alias::F24 => Some(HotKeyCode::F24),
-		Alias::Fn => Some(HotKeyCode::Fn),
-		Alias::FnLock => Some(HotKeyCode::FnLock),
-		Alias::PrintScreen => Some(HotKeyCode::PrintScreen),
-		Alias::ScrollLock => Some(HotKeyCode::ScrollLock),
-		Alias::Pause => None, // not currently supported; Some(HotKeyCode::Pause),
-		Alias::MediaPlayPause => Some(HotKeyCode::MediaPlayPause),
-		Alias::MediaTrackNext => Some(HotKeyCode::MediaTrackNext),
-		Alias::MediaTrackPrevious => Some(HotKeyCode::MediaTrackPrevious),
-		Alias::AudioVolumeDown => Some(HotKeyCode::AudioVolumeDown),
-		Alias::AudioVolumeMute => Some(HotKeyCode::AudioVolumeMute),
-		Alias::AudioVolumeUp => Some(HotKeyCode::AudioVolumeUp),
+		Alias::Backquote => Some(rdev::Key::BackQuote),
+		Alias::Backslash => Some(rdev::Key::BackSlash),
+		Alias::BracketLeft => Some(rdev::Key::LeftBracket),
+		Alias::BracketRight => Some(rdev::Key::RightBracket),
+		Alias::Comma => Some(rdev::Key::Comma),
+		Alias::Digit0 => Some(rdev::Key::Num0),
+		Alias::Digit1 => Some(rdev::Key::Num1),
+		Alias::Digit2 => Some(rdev::Key::Num2),
+		Alias::Digit3 => Some(rdev::Key::Num3),
+		Alias::Digit4 => Some(rdev::Key::Num4),
+		Alias::Digit5 => Some(rdev::Key::Num5),
+		Alias::Digit6 => Some(rdev::Key::Num6),
+		Alias::Digit7 => Some(rdev::Key::Num7),
+		Alias::Digit8 => Some(rdev::Key::Num8),
+		Alias::Digit9 => Some(rdev::Key::Num9),
+		Alias::Equal => Some(rdev::Key::Equal),
+		Alias::KeyA => Some(rdev::Key::KeyA),
+		Alias::KeyB => Some(rdev::Key::KeyB),
+		Alias::KeyC => Some(rdev::Key::KeyC),
+		Alias::KeyD => Some(rdev::Key::KeyD),
+		Alias::KeyE => Some(rdev::Key::KeyE),
+		Alias::KeyF => Some(rdev::Key::KeyF),
+		Alias::KeyG => Some(rdev::Key::KeyG),
+		Alias::KeyH => Some(rdev::Key::KeyH),
+		Alias::KeyI => Some(rdev::Key::KeyI),
+		Alias::KeyJ => Some(rdev::Key::KeyJ),
+		Alias::KeyK => Some(rdev::Key::KeyK),
+		Alias::KeyL => Some(rdev::Key::KeyL),
+		Alias::KeyM => Some(rdev::Key::KeyM),
+		Alias::KeyN => Some(rdev::Key::KeyN),
+		Alias::KeyO => Some(rdev::Key::KeyO),
+		Alias::KeyP => Some(rdev::Key::KeyP),
+		Alias::KeyQ => Some(rdev::Key::KeyQ),
+		Alias::KeyR => Some(rdev::Key::KeyR),
+		Alias::KeyS => Some(rdev::Key::KeyS),
+		Alias::KeyT => Some(rdev::Key::KeyT),
+		Alias::KeyU => Some(rdev::Key::KeyU),
+		Alias::KeyV => Some(rdev::Key::KeyV),
+		Alias::KeyW => Some(rdev::Key::KeyW),
+		Alias::KeyX => Some(rdev::Key::KeyX),
+		Alias::KeyY => Some(rdev::Key::KeyY),
+		Alias::KeyZ => Some(rdev::Key::KeyZ),
+		Alias::Minus => Some(rdev::Key::Minus),
+		Alias::Period => Some(rdev::Key::Dot),
+		Alias::Quote => Some(rdev::Key::Quote),
+		Alias::Semicolon => Some(rdev::Key::SemiColon),
+		Alias::Slash => Some(rdev::Key::Slash),
+		Alias::AltLeft => Some(rdev::Key::Alt),
+		Alias::AltRight => Some(rdev::Key::AltGr),
+		Alias::Backspace => Some(rdev::Key::Backspace),
+		Alias::CapsLock => Some(rdev::Key::CapsLock),
+		Alias::ControlLeft => Some(rdev::Key::ControlLeft),
+		Alias::ControlRight => Some(rdev::Key::ControlRight),
+		Alias::Enter => Some(rdev::Key::Return),
+		Alias::MetaLeft => Some(rdev::Key::MetaLeft),
+		Alias::MetaRight => Some(rdev::Key::MetaRight),
+		Alias::ShiftLeft => Some(rdev::Key::ShiftLeft),
+		Alias::ShiftRight => Some(rdev::Key::ShiftRight),
+		Alias::Space => Some(rdev::Key::Space),
+		Alias::Tab => Some(rdev::Key::Tab),
+		Alias::Delete => Some(rdev::Key::Delete),
+		Alias::End => Some(rdev::Key::End),
+		Alias::Home => Some(rdev::Key::Home),
+		Alias::Insert => Some(rdev::Key::Insert),
+		Alias::PageDown => Some(rdev::Key::PageDown),
+		Alias::PageUp => Some(rdev::Key::PageUp),
+		Alias::ArrowDown => Some(rdev::Key::DownArrow),
+		Alias::ArrowLeft => Some(rdev::Key::LeftArrow),
+		Alias::ArrowRight => Some(rdev::Key::RightArrow),
+		Alias::ArrowUp => Some(rdev::Key::UpArrow),
+		Alias::Escape => Some(rdev::Key::Escape),
+		Alias::F1 => Some(rdev::Key::F1),
+		Alias::F2 => Some(rdev::Key::F2),
+		Alias::F3 => Some(rdev::Key::F3),
+		Alias::F4 => Some(rdev::Key::F4),
+		Alias::F5 => Some(rdev::Key::F5),
+		Alias::F6 => Some(rdev::Key::F6),
+		Alias::F7 => Some(rdev::Key::F7),
+		Alias::F8 => Some(rdev::Key::F8),
+		Alias::F9 => Some(rdev::Key::F9),
+		Alias::F10 => Some(rdev::Key::F10),
+		Alias::F11 => Some(rdev::Key::F11),
+		Alias::F12 => Some(rdev::Key::F12),
+		Alias::F13 => Some(rdev::Key::Unknown(124)),
+		Alias::F14 => Some(rdev::Key::Unknown(125)),
+		Alias::F15 => Some(rdev::Key::Unknown(126)),
+		Alias::F16 => Some(rdev::Key::Unknown(127)),
+		Alias::F17 => Some(rdev::Key::Unknown(128)),
+		Alias::F18 => Some(rdev::Key::Unknown(129)),
+		Alias::F19 => Some(rdev::Key::Unknown(130)),
+		Alias::F20 => Some(rdev::Key::Unknown(131)),
+		Alias::F21 => Some(rdev::Key::Unknown(132)),
+		Alias::F22 => Some(rdev::Key::Unknown(133)),
+		Alias::F23 => Some(rdev::Key::Unknown(134)),
+		Alias::F24 => Some(rdev::Key::Unknown(135)),
+		Alias::Fn => Some(rdev::Key::Function),
+		Alias::PrintScreen => Some(rdev::Key::PrintScreen),
+		Alias::ScrollLock => Some(rdev::Key::ScrollLock),
+		Alias::Pause => Some(rdev::Key::Pause),
+		Alias::MediaPlayPause => Some(rdev::Key::Unknown(179)),
+		Alias::MediaTrackNext => Some(rdev::Key::Unknown(176)),
+		Alias::MediaTrackPrevious => Some(rdev::Key::Unknown(177)),
+		Alias::AudioVolumeDown => Some(rdev::Key::Unknown(174)),
+		Alias::AudioVolumeMute => Some(rdev::Key::Unknown(173)),
+		Alias::AudioVolumeUp => Some(rdev::Key::Unknown(175)),
 		Alias::Tilde => None,
 		Alias::Exclamation => None,
 		Alias::At => None,
@@ -457,82 +454,194 @@ fn key_alias_to_code(alias: shared::KeyAlias) -> Option<HotKeyCode> {
 	}
 }
 
-fn dealias_code(alias: shared::KeyAlias) -> Option<HotKeyCode> {
+fn dealias_code(alias: shared::KeyAlias) -> Option<rdev::Key> {
 	use shared::KeyAlias as Alias;
 	match alias {
-		Alias::Tilde => Some(HotKeyCode::Digit0),
-		Alias::Exclamation => Some(HotKeyCode::Digit1),
-		Alias::At => Some(HotKeyCode::Digit2),
-		Alias::Hash => Some(HotKeyCode::Digit3),
-		Alias::Dollar => Some(HotKeyCode::Digit4),
-		Alias::Percent => Some(HotKeyCode::Digit5),
-		Alias::Caret => Some(HotKeyCode::Digit6),
-		Alias::Ampersand => Some(HotKeyCode::Digit7),
-		Alias::Star => Some(HotKeyCode::Digit8),
-		Alias::ParenLeft => Some(HotKeyCode::Digit9),
-		Alias::ParenRight => Some(HotKeyCode::Digit0),
-		Alias::BraceLeft => Some(HotKeyCode::BracketLeft),
-		Alias::BraceRight => Some(HotKeyCode::BracketRight),
-		Alias::Underscore => Some(HotKeyCode::Minus),
-		Alias::Plus => Some(HotKeyCode::Equal),
-		Alias::Pipe => Some(HotKeyCode::Backslash),
-		Alias::Colon => Some(HotKeyCode::Semicolon),
-		Alias::QuoteDouble => Some(HotKeyCode::Quote),
-		Alias::LessThan => Some(HotKeyCode::Comma),
-		Alias::GreaterThan => Some(HotKeyCode::Period),
-		Alias::Question => Some(HotKeyCode::Slash),
+		Alias::Tilde => Some(rdev::Key::Num0),
+		Alias::Exclamation => Some(rdev::Key::Num1),
+		Alias::At => Some(rdev::Key::Num2),
+		Alias::Hash => Some(rdev::Key::Num3),
+		Alias::Dollar => Some(rdev::Key::Num4),
+		Alias::Percent => Some(rdev::Key::Num5),
+		Alias::Caret => Some(rdev::Key::Num6),
+		Alias::Ampersand => Some(rdev::Key::Num7),
+		Alias::Star => Some(rdev::Key::Num8),
+		Alias::ParenLeft => Some(rdev::Key::Num9),
+		Alias::ParenRight => Some(rdev::Key::Num0),
+		Alias::BraceLeft => Some(rdev::Key::LeftBracket),
+		Alias::BraceRight => Some(rdev::Key::RightBracket),
+		Alias::Underscore => Some(rdev::Key::Minus),
+		Alias::Plus => Some(rdev::Key::Equal),
+		Alias::Pipe => Some(rdev::Key::BackSlash),
+		Alias::Colon => Some(rdev::Key::SemiColon),
+		Alias::QuoteDouble => Some(rdev::Key::Quote),
+		Alias::LessThan => Some(rdev::Key::Comma),
+		Alias::GreaterThan => Some(rdev::Key::Dot),
+		Alias::Question => Some(rdev::Key::Slash),
 		_ => None,
 	}
 }
 
-fn is_alpha(code: HotKeyCode) -> bool {
-	static ALPHA: [HotKeyCode; 26] = [
-		HotKeyCode::KeyA,
-		HotKeyCode::KeyB,
-		HotKeyCode::KeyC,
-		HotKeyCode::KeyD,
-		HotKeyCode::KeyE,
-		HotKeyCode::KeyF,
-		HotKeyCode::KeyG,
-		HotKeyCode::KeyH,
-		HotKeyCode::KeyI,
-		HotKeyCode::KeyJ,
-		HotKeyCode::KeyK,
-		HotKeyCode::KeyL,
-		HotKeyCode::KeyM,
-		HotKeyCode::KeyN,
-		HotKeyCode::KeyO,
-		HotKeyCode::KeyP,
-		HotKeyCode::KeyQ,
-		HotKeyCode::KeyR,
-		HotKeyCode::KeyS,
-		HotKeyCode::KeyT,
-		HotKeyCode::KeyU,
-		HotKeyCode::KeyV,
-		HotKeyCode::KeyW,
-		HotKeyCode::KeyX,
-		HotKeyCode::KeyY,
-		HotKeyCode::KeyZ,
+fn is_alpha(code: rdev::Key) -> bool {
+	static ALPHA: [rdev::Key; 26] = [
+		rdev::Key::KeyA,
+		rdev::Key::KeyB,
+		rdev::Key::KeyC,
+		rdev::Key::KeyD,
+		rdev::Key::KeyE,
+		rdev::Key::KeyF,
+		rdev::Key::KeyG,
+		rdev::Key::KeyH,
+		rdev::Key::KeyI,
+		rdev::Key::KeyJ,
+		rdev::Key::KeyK,
+		rdev::Key::KeyL,
+		rdev::Key::KeyM,
+		rdev::Key::KeyN,
+		rdev::Key::KeyO,
+		rdev::Key::KeyP,
+		rdev::Key::KeyQ,
+		rdev::Key::KeyR,
+		rdev::Key::KeyS,
+		rdev::Key::KeyT,
+		rdev::Key::KeyU,
+		rdev::Key::KeyV,
+		rdev::Key::KeyW,
+		rdev::Key::KeyX,
+		rdev::Key::KeyY,
+		rdev::Key::KeyZ,
 	];
 	ALPHA.contains(&code)
 }
 
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+pub struct HotKey {
+	pub code: rdev::Key,
+	pub shift: bool,
+	pub ctrl: bool,
+	pub alt: bool,
+	pub meta: bool,
+}
+impl Default for HotKey {
+	fn default() -> Self {
+		Self {
+			code: rdev::Key::Unknown(0),
+			shift: false,
+			ctrl: false,
+			alt: false,
+			meta: false,
+		}
+	}
+}
+impl HotKey {
+	pub fn relevant_keys(&self) -> HashSet<rdev::Key> {
+		let mut keys = HashSet::with_capacity(9);
+		keys.insert(self.code);
+		if self.shift {
+			keys.insert(rdev::Key::ShiftLeft);
+			keys.insert(rdev::Key::ShiftRight);
+		}
+		if self.ctrl {
+			keys.insert(rdev::Key::ControlLeft);
+			keys.insert(rdev::Key::ControlRight);
+		}
+		if self.alt {
+			keys.insert(rdev::Key::Alt);
+			keys.insert(rdev::Key::AltGr);
+		}
+		if self.meta {
+			keys.insert(rdev::Key::MetaLeft);
+			keys.insert(rdev::Key::MetaRight);
+		}
+		keys
+	}
+
+	fn is_missing_mod(code: rdev::Key, want_mod: bool, mod_types: &[rdev::Key], pressed_keys: &HashSet<rdev::Key>) -> bool {
+		let any_mod_pressed = mod_types.iter().fold(false, |any_pressed, key| any_pressed || pressed_keys.contains(key));
+		!mod_types.contains(&code) && want_mod != any_mod_pressed
+	}
+
+	pub fn is_pressed(&self, keys: &HashSet<rdev::Key>) -> bool {
+		if !keys.contains(&self.code) {
+			return false;
+		}
+
+		if Self::is_missing_mod(
+			self.code, self.shift,
+			&[rdev::Key::ShiftLeft, rdev::Key::ShiftRight], keys
+		) {
+			return false;
+		}
+		
+		if Self::is_missing_mod(
+			self.code, self.ctrl,
+			&[rdev::Key::ControlLeft, rdev::Key::ControlRight], keys
+		) {
+			return false;
+		}
+		
+		if Self::is_missing_mod(
+			self.code, self.alt,
+			&[rdev::Key::Alt, rdev::Key::AltGr], keys
+		) {
+			return false;
+		}
+		
+		if Self::is_missing_mod(
+			self.code, self.meta,
+			&[rdev::Key::MetaLeft, rdev::Key::MetaRight], keys
+		) {
+			return false;
+		}
+
+		true
+	}
+}
+impl std::fmt::Display for HotKey {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		write!(f, "{:?}", self.code)?;
+		if self.shift {
+			write!(f, "+shift")?;
+		}
+		if self.ctrl {
+			write!(f, "+ctrl")?;
+		}
+		if self.alt {
+			write!(f, "+alt")?;
+		}
+		if self.meta {
+			write!(f, "+meta")?;
+		}
+		Ok(())
+	}
+}
 
 pub fn alias_hotkeys(alias: shared::KeyAlias) -> Vec<HotKey> {
 	let mut hotkeys = Vec::with_capacity(3);
 
 	// Simple conversions, alias directly matches some code
 	if let Some(code) = key_alias_to_code(alias) {
-		hotkeys.push(HotKey::new(None, code));
+		hotkeys.push(HotKey {
+			code,
+			..Default::default()
+		});
 		// Lower to Upper casings
 		if is_alpha(code) {
-			hotkeys.push(HotKey::new(Some(HotKeyModifiers::SHIFT), code));
+			hotkeys.push(HotKey {
+				code,
+				shift: true,
+				..Default::default()
+			});
 		}
 	}
 
 	// Symbols which are represented by other codes
 	if let Some(code) = dealias_code(alias) {
-		hotkeys.push(HotKey::new(Some(HotKeyModifiers::SHIFT), code));
+		hotkeys.push(HotKey {
+			code,
+			shift: true,
+			..Default::default()
+		});
 	}
 
 	hotkeys

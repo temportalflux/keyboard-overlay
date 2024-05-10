@@ -46,7 +46,7 @@ tauri-plugin-log = { git = "https://github.com/tauri-apps/plugins-workspace", br
 tauri-plugin-clipboard = "0.6.1"
 
 reqwest = "0.12"
-global-hotkey = "0.5"
+rdev = { version = "0.5", features = [ "unstable_grab"] }
 
 [dependencies.windows]
 version = "0.54"

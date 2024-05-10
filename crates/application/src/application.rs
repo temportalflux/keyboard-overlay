@@ -1,9 +1,12 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use std::{collections::{BTreeSet, HashMap, HashSet}, sync::{Arc, RwLock}};
 use itertools::Itertools;
-use shared::InputUpdate;
+use multimap::MultiMap;
+use std::{
+	collections::{BTreeMap, HashSet},
+	sync::{Arc, RwLock},
+};
 use tauri::{CustomMenuItem, Manager, SystemTray, SystemTrayEvent, SystemTrayMenu, SystemTraySubmenu};
 use tauri_plugin_log::LogTarget;
 use tauri_plugin_positioner::WindowExt;
@@ -42,9 +45,16 @@ struct GlobalInputState(Arc<RwLock<InputState>>);
 #[derive(Default)]
 struct InputState {
 	app: Option<tauri::AppHandle<tauri::Wry>>,
-	hotkey_manager: Option<global_hotkey::GlobalHotKeyManager>,
-	registered_hotkeys: multimap::MultiMap<HotKey, InputBinding>,
-	active_switches: HashSet<String>,
+
+	key_to_relevant_hotkeys: MultiMap<rdev::Key, HotKey>,
+	hotkey_bindings: MultiMap<HotKey, InputBinding>,
+
+	pressed_keys: HashSet<rdev::Key>,
+	pressed_hotkeys: HashSet<HotKey>,
+
+	default_layer: String,
+	active_layer: String,
+	active_bindings: BTreeMap<Arc<String>, InputBinding>,
 }
 
 #[derive(Debug, Clone)]
@@ -57,55 +67,26 @@ struct InputBinding {
 }
 
 impl GlobalInputState {
-	fn init_app(&self, handle: tauri::AppHandle<tauri::Wry>) -> global_hotkey::Result<()> {
+	fn init_app(&self, handle: tauri::AppHandle<tauri::Wry>) {
 		let mut state = self.0.write().expect("failed to open writing on input state");
 		state.app = Some(handle);
-		state.hotkey_manager = Some(global_hotkey::GlobalHotKeyManager::new()?);
-		drop(state);
-
-		global_hotkey::GlobalHotKeyEvent::set_event_handler(Some({
-			let handle = self.clone();
-			move |event| handle.handle_event(event)
-		}));
-
-		Ok(())
 	}
 
 	fn update_bindings(&self, config: &Config) {
-		self.unregister_hotkeys();
+		{
+			let mut state = self.0.write().expect("failed to open writing on input state");
+			state.default_layer = config.layout().default_layer().clone();
+			state.active_layer = state.default_layer.clone();
+			state.key_to_relevant_hotkeys.clear();
+			state.hotkey_bindings.clear();
+			state.pressed_keys.clear();
+			state.pressed_hotkeys.clear();
+			state.active_bindings.clear();
+		}
 		self.insert_hotkeys(config);
-		self.register_hotkeys();
+		self.broadcast_update();
 	}
 
-	fn register_hotkeys(&self) {
-		let state = self.0.read().expect("failed to open writing on input state");
-		let hotkeys = state.registered_hotkeys.iter_all().map(|(key, _)| key.clone()).collect::<Vec<_>>();
-		if let Some(manager) = &state.hotkey_manager {
-			log::debug!("{}", hotkeys.iter().map(|key| key.into_string()).join(", "));
-			for hotkey in hotkeys {
-				if let Err(err) = manager.register(hotkey) {
-					log::error!(target: "input", "{err:?}");
-				}
-			}
-		}
-	}
-
-	fn unregister_hotkeys(&self) {
-		// default to size of a 34-count keyboard with 6 layers, a tap that shifts and a hold binding
-		let mut state = self.0.write().expect("failed to open writing on input state");
-		
-		let hotkeys = state.registered_hotkeys.iter_all().map(|(key, _)| key.clone()).collect::<Vec<_>>();
-		if let Some(manager) = &state.hotkey_manager {
-			for hotkey in hotkeys {
-				if let Err(err) = manager.unregister(hotkey) {
-					log::error!(target: "input", "{err:?}");
-				}
-			}
-		}
-
-		state.registered_hotkeys.clear();
-	}
-	
 	fn insert_hotkeys(&self, config: &Config) {
 		for (layer_id, layer) in config.layout().layers() {
 			log::debug!("layer: {layer_id}");
@@ -138,37 +119,85 @@ impl GlobalInputState {
 
 	fn insert_binding(&self, input_binding: InputBinding) {
 		let mut state = self.0.write().expect("failed to open writing on input state");
-		
 		for hotkey in alias_hotkeys(input_binding.key) {
-			log::debug!("{:?} => {}", &input_binding.key, hotkey.into_string());
-			state.registered_hotkeys.insert(hotkey, input_binding.clone());
+			for code in hotkey.relevant_keys() {
+				state.key_to_relevant_hotkeys.insert(code, hotkey);
+			}
+			state.hotkey_bindings.insert(hotkey, input_binding.clone());
 		}
 	}
 
-	fn handle_event(&self, event: global_hotkey::GlobalHotKeyEvent) {
-		log::debug!("{event:?}");
-		// NOTE TO SELF: ACK why is this consuming the input??
-		let state = self.0.read().expect("failed to open writing on input state");
-		for (hotkey, bindings) in state.registered_hotkeys.iter_all() {
-			if hotkey.id() == event.id() {
-				log::debug!("{} => {bindings:?}", hotkey.into_string());
-				for binding in bindings {
+	fn handle(&self, event: &rdev::Event) {		
+		let mut state = self.0.write().expect("failed to open writing on input state");
+		let key = match event.event_type {
+			rdev::EventType::KeyPress(key) => {
+				state.pressed_keys.insert(key);
+				key
+			}
+			rdev::EventType::KeyRelease(key) => {
+				state.pressed_keys.remove(&key);
+				key
+			}
+			_ => return,
+		};
 
+		let Some(hotkeys) = state.key_to_relevant_hotkeys.get_vec(&key).cloned() else { return };
+
+		let mut should_broadcast = false;
+
+		let mut changed_hotkeys = HashSet::with_capacity(10);
+		for hotkey in hotkeys {
+			if hotkey.is_pressed(&state.pressed_keys) {
+				if state.pressed_hotkeys.insert(hotkey) {
+					changed_hotkeys.insert(hotkey);
+				}
+			}
+			else {
+				if state.pressed_hotkeys.remove(&hotkey) {
+					changed_hotkeys.insert(hotkey);
 				}
 			}
 		}
-	}
 
-	/*
-	fn handle(&self, event: &rdev::Event) {
-		let (key, is_pressed) = match event.event_type {
-			rdev::EventType::KeyPress(key) => (key, true),
-			rdev::EventType::KeyRelease(key) => (key, false),
-			_ => return,
-		};
-		
+		for hotkey in changed_hotkeys {
+			if let Some(bindings) = state.hotkey_bindings.get_vec(&hotkey).cloned() {
+				for binding in bindings {
+					if *binding.layer_id != state.active_layer {
+						match &binding.target_layer {
+							Some(target_layer) if **target_layer == state.active_layer => {}
+							_ => continue,
+						}
+					}
+					
+					if state.pressed_hotkeys.contains(&hotkey) {
+						if let Some(new_layer) = &binding.target_layer {
+							state.active_layer = (**new_layer).clone();
+						}
+
+						state.active_bindings.insert(binding.switch_id.clone(), binding);
+						should_broadcast = true;
+					}
+					else {
+						if binding.target_layer.is_some() {
+							state.active_layer = state.default_layer.clone();
+						}
+
+						if state.active_bindings.remove(&binding.switch_id).is_some() {
+							should_broadcast = true;
+						}
+					}
+				}
+			}
+		}
+
+		drop(state);
+		if should_broadcast {
+			self.broadcast_update();
+		}
+
+		/*
 		let mut state = self.0.write().expect("failed to open writing on input state");
-		
+
 		let Some(switch_id) = state.switch_bindings.get(&key) else { return };
 
 		let was_pressed = state.active_switches.contains(&**switch_id);
@@ -182,15 +211,37 @@ impl GlobalInputState {
 		{
 			state.active_switches.remove(&*switch_id.as_ref());
 		}
-		
+
 		let Some(app) = &state.app else { return };
 		log::debug!("{:?}", state.active_switches);
 		let _ = app.emit_all("input", InputUpdate(state.active_switches.clone()));
+		*/
 	}
-	*/
+
+	fn broadcast_update(&self) {
+		let state = self.0.read().expect("failed to open writing on input state");
+		log::debug!(
+			"{}: {{{}}} {:?}", state.active_layer,
+			state.pressed_hotkeys.iter().map(HotKey::to_string).join(", "),
+			state.active_bindings.keys().collect::<Vec<_>>()
+		);
+	}
 }
 
 fn main() -> anyhow::Result<()> {
+	let global_input = GlobalInputState::default();
+	std::thread::spawn({
+		let input = global_input.clone();
+		move || {
+			if let Err(err) = rdev::grab(move |event| {
+				input.handle(&event);
+				Some(event)
+			}) {
+				log::error!(target: "rdev", "{err:?}");
+			}
+		}
+	});
+
 	tauri::Builder::default()
 		.plugin(
 			tauri_plugin_log::Builder::default()
@@ -209,7 +260,7 @@ fn main() -> anyhow::Result<()> {
 		.plugin(tauri_plugin_positioner::init())
 		.plugin(tauri_plugin_clipboard::init())
 		.manage(ConfigMutex::default())
-		.manage(GlobalInputState::default())
+		.manage(global_input)
 		.setup(|app| {
 			// Listen for logging from the frontend
 			app.listen_global("log", |event| {
@@ -246,9 +297,9 @@ fn main() -> anyhow::Result<()> {
 			// Associate the app to global_input so that when input changes, it can be propagated to app events.
 			{
 				let global_input = app.state::<GlobalInputState>();
-				global_input.init_app(app.handle())?;
+				global_input.init_app(app.handle());
 			}
-			
+
 			// Listen for config changes to propagate them to the global input state
 			app.listen_global("config", {
 				let app = app.handle();

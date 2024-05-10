@@ -117,7 +117,7 @@ fn App() -> Html {
 				<div class="label">{"NUM"}</div>
 			</div>
 		</div>
-		
+
 		<div style={layout_style}>
 			{layout.as_ref().zip(current_layer).map(|(layout, layer_id)| {
 				let layer = layout.get_layer(&layer_id)?;

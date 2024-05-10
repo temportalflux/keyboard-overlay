@@ -1,5 +1,8 @@
-use crate::{Switch, KeyAlias};
-use kdlize::{ext::{DocumentExt, ValueExt}, AsKdl, FromKdl};
+use crate::{KeyAlias, Switch};
+use kdlize::{
+	ext::{DocumentExt, ValueExt},
+	AsKdl, FromKdl,
+};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -170,7 +173,7 @@ impl FromKdl<()> for Binding {
 						"IconBootstrap" => Some(BindingDisplay::IconBootstrap(value)),
 						"IconCustom" => Some(BindingDisplay::IconCustom(value)),
 						kind_id => Err(InvalidBindingDisplay(kind_id.to_owned()))?,
-					}
+					},
 				}
 			}
 		};
