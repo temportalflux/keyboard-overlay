@@ -3,6 +3,8 @@ use std::collections::HashSet;
 
 mod layout;
 pub use layout::*;
+mod key;
+pub use key::*;
 mod switch;
 pub use switch::*;
 
@@ -16,4 +18,7 @@ pub struct LogRecord {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct InputUpdate(pub HashSet<String>);
+pub struct InputUpdate {
+	pub active_layer: String,
+	pub active_switches: HashSet<String>,
+}

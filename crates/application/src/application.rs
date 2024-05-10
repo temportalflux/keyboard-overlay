@@ -1,8 +1,8 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use std::{collections::{HashMap, HashSet}, sync::{Arc, RwLock}};
-
+use std::{collections::{BTreeSet, HashMap, HashSet}, sync::{Arc, RwLock}};
+use itertools::Itertools;
 use shared::InputUpdate;
 use tauri::{CustomMenuItem, Manager, SystemTray, SystemTrayEvent, SystemTrayMenu, SystemTraySubmenu};
 use tauri_plugin_log::LogTarget;
@@ -42,24 +42,123 @@ struct GlobalInputState(Arc<RwLock<InputState>>);
 #[derive(Default)]
 struct InputState {
 	app: Option<tauri::AppHandle<tauri::Wry>>,
-	switch_bindings: HashMap<rdev::Key, Arc<String>>,
+	hotkey_manager: Option<global_hotkey::GlobalHotKeyManager>,
+	registered_hotkeys: multimap::MultiMap<HotKey, InputBinding>,
 	active_switches: HashSet<String>,
 }
 
+#[derive(Debug, Clone)]
+struct InputBinding {
+	layer_id: Arc<String>,
+	switch_id: Arc<String>,
+	is_hold: bool,
+	target_layer: Option<Arc<String>>,
+	key: shared::KeyAlias,
+}
+
 impl GlobalInputState {
-	fn init_app(&self, handle: tauri::AppHandle<tauri::Wry>) {
+	fn init_app(&self, handle: tauri::AppHandle<tauri::Wry>) -> global_hotkey::Result<()> {
 		let mut state = self.0.write().expect("failed to open writing on input state");
 		state.app = Some(handle);
+		state.hotkey_manager = Some(global_hotkey::GlobalHotKeyManager::new()?);
+		drop(state);
+
+		global_hotkey::GlobalHotKeyEvent::set_event_handler(Some({
+			let handle = self.clone();
+			move |event| handle.handle_event(event)
+		}));
+
+		Ok(())
 	}
 
 	fn update_bindings(&self, config: &Config) {
-		let mut state = self.0.write().expect("failed to open writing on input state");
-		for (switch_id, switch) in config.layout().switches() {
-			let key = switch_key_to_rdev(switch.os_key);
-			state.switch_bindings.insert(key, switch_id.clone().into());
+		self.unregister_hotkeys();
+		self.insert_hotkeys(config);
+		self.register_hotkeys();
+	}
+
+	fn register_hotkeys(&self) {
+		let state = self.0.read().expect("failed to open writing on input state");
+		let hotkeys = state.registered_hotkeys.iter_all().map(|(key, _)| key.clone()).collect::<Vec<_>>();
+		if let Some(manager) = &state.hotkey_manager {
+			log::debug!("{}", hotkeys.iter().map(|key| key.into_string()).join(", "));
+			for hotkey in hotkeys {
+				if let Err(err) = manager.register(hotkey) {
+					log::error!(target: "input", "{err:?}");
+				}
+			}
 		}
 	}
 
+	fn unregister_hotkeys(&self) {
+		// default to size of a 34-count keyboard with 6 layers, a tap that shifts and a hold binding
+		let mut state = self.0.write().expect("failed to open writing on input state");
+		
+		let hotkeys = state.registered_hotkeys.iter_all().map(|(key, _)| key.clone()).collect::<Vec<_>>();
+		if let Some(manager) = &state.hotkey_manager {
+			for hotkey in hotkeys {
+				if let Err(err) = manager.unregister(hotkey) {
+					log::error!(target: "input", "{err:?}");
+				}
+			}
+		}
+
+		state.registered_hotkeys.clear();
+	}
+	
+	fn insert_hotkeys(&self, config: &Config) {
+		for (layer_id, layer) in config.layout().layers() {
+			log::debug!("layer: {layer_id}");
+			let layer_id = Arc::new(layer_id.clone());
+			for (switch_id, bindings) in layer.bindings() {
+				let switch_id = Arc::new(switch_id.clone());
+				if let Some(binding) = bindings.tap.as_ref() {
+					let target_layer = binding.layer.as_ref().map(Clone::clone).map(Arc::new);
+					self.insert_binding(InputBinding {
+						layer_id: layer_id.clone(),
+						switch_id: switch_id.clone(),
+						is_hold: false,
+						target_layer,
+						key: binding.input,
+					});
+				}
+				if let Some(binding) = bindings.hold.as_ref() {
+					let target_layer = binding.layer.as_ref().map(Clone::clone).map(Arc::new);
+					self.insert_binding(InputBinding {
+						layer_id: layer_id.clone(),
+						switch_id: switch_id.clone(),
+						is_hold: true,
+						target_layer,
+						key: binding.input,
+					});
+				}
+			}
+		}
+	}
+
+	fn insert_binding(&self, input_binding: InputBinding) {
+		let mut state = self.0.write().expect("failed to open writing on input state");
+		
+		for hotkey in alias_hotkeys(input_binding.key) {
+			log::debug!("{:?} => {}", &input_binding.key, hotkey.into_string());
+			state.registered_hotkeys.insert(hotkey, input_binding.clone());
+		}
+	}
+
+	fn handle_event(&self, event: global_hotkey::GlobalHotKeyEvent) {
+		log::debug!("{event:?}");
+		let state = self.0.read().expect("failed to open writing on input state");
+		for (hotkey, bindings) in state.registered_hotkeys.iter_all() {
+			if hotkey.id() == event.id() {
+				log::debug!("{} => {bindings:?}", hotkey.into_string());
+				for binding in bindings {
+
+				}
+			}
+		}
+	}
+
+	/*
 	fn handle(&self, event: &rdev::Event) {
 		let (key, is_pressed) = match event.event_type {
 			rdev::EventType::KeyPress(key) => (key, true),
@@ -87,22 +186,10 @@ impl GlobalInputState {
 		log::debug!("{:?}", state.active_switches);
 		let _ = app.emit_all("input", InputUpdate(state.active_switches.clone()));
 	}
+	*/
 }
 
 fn main() -> anyhow::Result<()> {
-	let global_input = GlobalInputState::default();
-	std::thread::spawn({
-		let input = global_input.clone();
-		move || {
-			if let Err(err) = rdev::grab(move |event| {
-				input.handle(&event);
-				Some(event)
-			}) {
-				log::error!(target: "rdev", "{err:?}");
-			}
-		}
-	});
-
 	tauri::Builder::default()
 		.plugin(
 			tauri_plugin_log::Builder::default()
@@ -121,7 +208,7 @@ fn main() -> anyhow::Result<()> {
 		.plugin(tauri_plugin_positioner::init())
 		.plugin(tauri_plugin_clipboard::init())
 		.manage(ConfigMutex::default())
-		.manage(global_input)
+		.manage(GlobalInputState::default())
 		.setup(|app| {
 			// Listen for logging from the frontend
 			app.listen_global("log", |event| {
@@ -143,20 +230,22 @@ fn main() -> anyhow::Result<()> {
 
 					let _ = app.emit_all("layout", config.layout().clone());
 
+					/*
 					let _ = app.emit_all(
 						"input",
 						InputUpdate(["l1".into(), "r2".into(), "r4".into(), "l3".into()].into()),
 					);
+					*/
 				}
 			});
 
 			let window = app.get_window("main").ok_or(tauri::Error::InvalidWindowHandle)?;
-			window.set_ignore_cursor_events(true)?;
+			//window.set_ignore_cursor_events(true)?;
 
 			// Associate the app to global_input so that when input changes, it can be propagated to app events.
 			{
 				let global_input = app.state::<GlobalInputState>();
-				global_input.init_app(app.handle());
+				global_input.init_app(app.handle())?;
 			}
 			
 			// Listen for config changes to propagate them to the global input state

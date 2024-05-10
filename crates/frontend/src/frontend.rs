@@ -1,5 +1,5 @@
 use futures::StreamExt;
-use shared::{InputUpdate, Layout, Side};
+use shared::{BoundSwitch, InputUpdate, Layout, Side};
 use tauri_sys::event::listen;
 use wasm_bindgen::prelude::*;
 use yew::prelude::*;
@@ -91,15 +91,36 @@ fn App() -> Html {
 		spawn_local("ready", tauri_sys::event::emit("ready", &()));
 	});
 
+	let active_layer = input_update.as_ref().map(|input| &input.active_layer);
+	let default_layer = layout.as_ref().map(|layout| layout.default_layer());
+	let current_layer = active_layer.or(default_layer);
+
 	let layout_style = Style::default().with("--icon-scale", *icon_scale);
 
 	html! {<>
 		<div class="guideline x" />
 		<div class="guideline y" />
 		<div style="display: none;"><img src="https://raw.githubusercontent.com/tapioki/cephalopoda/main/Images/architeuthis_dux.png" style="height: 400px; margin-left: -150px; margin-top: 100px;" /></div>
+		<div class="switch active" style="--x: -10px; --y: 60px;">
+			<div class="center">
+				<div class="label">{"w"}</div>
+			</div>
+			<div class="bottom">
+				<div class="label">{"ctrl"}</div>
+			</div>
+		</div>
+		<div class="switch" style="--x: -10px; --y: 0px;">
+			<div class="center">
+				<img class="icon" style="--glyph: url(assets/glyph/space.svg);" />
+			</div>
+			<div class="bottom">
+				<div class="label">{"NUM"}</div>
+			</div>
+		</div>
+		
 		<div style={layout_style}>
-			{layout.as_ref().map(|layout| {
-				let layer = layout.get_layer(layout.default_layer())?;
+			{layout.as_ref().zip(current_layer).map(|(layout, layer_id)| {
+				let layer = layout.get_layer(&layer_id)?;
 				let iter = layout.switches().iter();
 				let iter = iter.map(|(switch_id, switch)| (switch_id, switch, layer.get_binding(switch_id)));
 				let switches = iter.map(|(switch_id, switch, binding)| html!(
@@ -107,7 +128,7 @@ fn App() -> Html {
 						switch_id={switch_id.clone()}
 						switch={*switch}
 						binding={binding.cloned()}
-						is_active={input_update.as_ref().map(|input| input.0.contains(switch_id)).unwrap_or(false)}
+						is_active={input_update.as_ref().map(|input| input.active_switches.contains(switch_id)).unwrap_or(false)}
 					/>
 				)).collect::<Vec<_>>();
 				Some(html!(<>{switches}</>))
@@ -120,7 +141,7 @@ fn App() -> Html {
 pub struct KeySwitchProps {
 	pub switch_id: AttrValue,
 	pub switch: shared::Switch,
-	pub binding: Option<String>,
+	pub binding: Option<BoundSwitch>,
 	pub is_active: bool,
 }
 
@@ -149,8 +170,9 @@ fn KeySwitch(
 		true => InputGlyphStyle::Fill,
 	};
 	let binding = binding.clone().unwrap_or_default();
+	// <InputGlyph name={binding.clone()} style={glyph_style} />
 	html!(<div id={switch_id.clone()} {class} {style} side={switch.side.as_ref().map(Side::to_string)}>
-		<InputGlyph name={binding.clone()} style={glyph_style} />
+		
 	</div>)
 }
 

@@ -54,7 +54,7 @@ body {
 	--offset-y: calc(var(--scale-y) * var(--y) * var(--icon-scale));
 	--center-x: calc(0.5 * var(--width) * var(--icon-scale));
 	--center-y: calc(0.5 * var(--height) * var(--icon-scale));
-	left: calc(50% + var(--offset-x) - var(--center-x));
+	left: calc(50% + var(--offset-x) - var(--center-x) + 10px);
 	top: calc(50% + var(--offset-y) - var(--center-y));
 	width: calc(var(--width) * var(--icon-scale));
 	height: calc(var(--height) * var(--icon-scale));
@@ -70,4 +70,78 @@ body {
 }
 .key[side="right"] {
 	--scale-x: 1;
+}
+
+.switch {
+	position: absolute;
+	--x: 0px;
+	--y: 0px;
+	--width: 45px;
+	--height: 45px;
+	--scale: 1;
+	--scale-x: calc(var(--scale) * 1);
+	--scale-y: calc(var(--scale) * -1);
+	--offset-x: calc(var(--scale-x) * var(--x));
+	--offset-y: calc(var(--scale-y) * var(--y));
+	--center-x: calc(0.5 * var(--width));
+	--center-y: calc(0.5 * var(--height));
+	left: calc(50% + var(--offset-x) - var(--center-x));
+	top: calc(50% + var(--offset-y) - var(--center-y));
+	width: calc(var(--width));
+	height: calc(var(--height));
+
+	border-style: solid;
+	border-width: 3px;
+	border-radius: 10px;
+	border-color: #ffffff;
+	background-color: #ffffff00;
+
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+
+	.label {
+		font-family: 'Ubuntu Mono';
+		font-weight: 700;
+		text-align: center;
+		color: #ffffff;
+	}
+	.icon {
+		--glyph: "";
+		-webkit-mask: var(--glyph) no-repeat 50% 50%;
+		mask: var(--glyph) no-repeat 50% 50%;
+		background-color: #ffffffff;
+		width: 0px;
+		height: 0px;
+	}
+
+	> .center {
+		margin-top: auto;
+		
+		> .label {
+			font-size: 40px;
+			margin-bottom: 5px;
+			line-height: 25px;
+		}
+		> .icon {
+			width: 20px;
+			height: 20px;
+		}
+	}
+	> .bottom {
+		> .label {
+			font-size: 14px;
+			line-height: 14px;
+		}
+	}
+}
+.switch.active {
+	background-color: #ffffffff;
+	
+	.label {
+		color: rgba(45, 45, 45, 1.0);
+	}
+	.icon {
+		background-color: rgba(45, 45, 45, 1.0);
+	}
 }
