@@ -4,7 +4,7 @@
 use itertools::Itertools;
 use multimap::MultiMap;
 use std::{
-	collections::{BTreeMap, HashSet},
+	collections::{HashMap, HashSet},
 	sync::{Arc, RwLock},
 };
 use tauri::{CustomMenuItem, Manager, SystemTray, SystemTrayEvent, SystemTrayMenu, SystemTraySubmenu};
@@ -45,6 +45,8 @@ struct GlobalInputState(Arc<RwLock<InputState>>);
 #[derive(Default)]
 struct InputState {
 	app: Option<tauri::AppHandle<tauri::Wry>>,
+	layer_order: Vec<String>,
+	layer_switches: HashMap<String, HashSet<String>>,
 
 	key_to_relevant_hotkeys: MultiMap<rdev::Key, HotKey>,
 	hotkey_bindings: MultiMap<HotKey, InputBinding>,
@@ -53,17 +55,39 @@ struct InputState {
 	pressed_hotkeys: HashSet<HotKey>,
 
 	default_layer: String,
-	active_layer: String,
-	active_bindings: BTreeMap<Arc<String>, InputBinding>,
+
+	shared_state: shared::InputState,
 }
 
 #[derive(Debug, Clone)]
 struct InputBinding {
 	layer_id: Arc<String>,
 	switch_id: Arc<String>,
-	is_hold: bool,
-	target_layer: Option<Arc<String>>,
+	slot: shared::SwitchSlot,
 	key: shared::KeyAlias,
+	target_layer: Option<Arc<String>>,
+}
+
+impl InputState {
+	fn can_trigger(&self, binding: &InputBinding) -> bool {
+		for layer_id in self.layer_order.iter().rev() {
+			// The layer being scanned is not active
+			if !self.shared_state.active_layers.contains(layer_id) {
+				continue;
+			}
+			// We found our layer, so it must be able to trigger
+			if layer_id == &*binding.layer_id {
+				return true;
+			}
+			// This is some layer with higher priority than the binding, so see if this layer blocks it
+			let Some(bound_switches) = self.layer_switches.get(layer_id) else { continue; };
+			if bound_switches.contains(&*binding.switch_id) {
+				// something else has the switch bound
+				return false;
+			}
+		}
+		false
+	}
 }
 
 impl GlobalInputState {
@@ -75,13 +99,25 @@ impl GlobalInputState {
 	fn update_bindings(&self, config: &Config) {
 		{
 			let mut state = self.0.write().expect("failed to open writing on input state");
+			state.shared_state = shared::InputState::default();
+
 			state.default_layer = config.layout().default_layer().clone();
-			state.active_layer = state.default_layer.clone();
+			state
+				.shared_state
+				.active_layers
+				.insert(config.layout().default_layer().clone());
+
+			state.layer_order = config.layout().layer_order().clone();
+			state.layer_switches.clear();
+			for (layer_id, layer) in config.layout().layers() {
+				let switch_ids = layer.bindings().keys().map(Clone::clone).collect();
+				state.layer_switches.insert(layer_id.clone(), switch_ids);
+			}
+
 			state.key_to_relevant_hotkeys.clear();
 			state.hotkey_bindings.clear();
 			state.pressed_keys.clear();
 			state.pressed_hotkeys.clear();
-			state.active_bindings.clear();
 		}
 		self.insert_hotkeys(config);
 		self.broadcast_update();
@@ -93,22 +129,12 @@ impl GlobalInputState {
 			let layer_id = Arc::new(layer_id.clone());
 			for (switch_id, bindings) in layer.bindings() {
 				let switch_id = Arc::new(switch_id.clone());
-				if let Some(binding) = bindings.tap.as_ref() {
+				for (slot, binding) in &bindings.slots {
 					let target_layer = binding.layer.as_ref().map(Clone::clone).map(Arc::new);
 					self.insert_binding(InputBinding {
 						layer_id: layer_id.clone(),
 						switch_id: switch_id.clone(),
-						is_hold: false,
-						target_layer,
-						key: binding.input,
-					});
-				}
-				if let Some(binding) = bindings.hold.as_ref() {
-					let target_layer = binding.layer.as_ref().map(Clone::clone).map(Arc::new);
-					self.insert_binding(InputBinding {
-						layer_id: layer_id.clone(),
-						switch_id: switch_id.clone(),
-						is_hold: true,
+						slot: *slot,
 						target_layer,
 						key: binding.input,
 					});
@@ -127,7 +153,7 @@ impl GlobalInputState {
 		}
 	}
 
-	fn handle(&self, event: &rdev::Event) {		
+	fn handle(&self, event: &rdev::Event) {
 		let mut state = self.0.write().expect("failed to open writing on input state");
 		let key = match event.event_type {
 			rdev::EventType::KeyPress(key) => {
@@ -141,7 +167,9 @@ impl GlobalInputState {
 			_ => return,
 		};
 
-		let Some(hotkeys) = state.key_to_relevant_hotkeys.get_vec(&key).cloned() else { return };
+		let Some(hotkeys) = state.key_to_relevant_hotkeys.get_vec(&key).cloned() else {
+			return;
+		};
 
 		let mut should_broadcast = false;
 
@@ -151,8 +179,7 @@ impl GlobalInputState {
 				if state.pressed_hotkeys.insert(hotkey) {
 					changed_hotkeys.insert(hotkey);
 				}
-			}
-			else {
+			} else {
 				if state.pressed_hotkeys.remove(&hotkey) {
 					changed_hotkeys.insert(hotkey);
 				}
@@ -160,29 +187,30 @@ impl GlobalInputState {
 		}
 
 		for hotkey in changed_hotkeys {
+			let pressed = state.pressed_hotkeys.contains(&hotkey);
 			if let Some(bindings) = state.hotkey_bindings.get_vec(&hotkey).cloned() {
 				for binding in bindings {
-					if *binding.layer_id != state.active_layer {
-						match &binding.target_layer {
-							Some(target_layer) if **target_layer == state.active_layer => {}
-							_ => continue,
-						}
-					}
-					
-					if state.pressed_hotkeys.contains(&hotkey) {
+					if pressed && state.can_trigger(&binding) {
 						if let Some(new_layer) = &binding.target_layer {
-							state.active_layer = (**new_layer).clone();
+							state.shared_state.active_layers.insert((**new_layer).clone());
 						}
 
-						state.active_bindings.insert(binding.switch_id.clone(), binding);
+						state
+							.shared_state
+							.active_switches
+							.insert((*binding.switch_id).clone(), binding.slot);
 						should_broadcast = true;
-					}
-					else {
-						if binding.target_layer.is_some() {
-							state.active_layer = state.default_layer.clone();
+					} else if !pressed {
+						if let Some(layer) = &binding.target_layer {
+							state.shared_state.active_layers.remove(&**layer);
 						}
 
-						if state.active_bindings.remove(&binding.switch_id).is_some() {
+						if state
+							.shared_state
+							.active_switches
+							.remove(&**binding.switch_id)
+							.is_some()
+						{
 							should_broadcast = true;
 						}
 					}
@@ -194,37 +222,19 @@ impl GlobalInputState {
 		if should_broadcast {
 			self.broadcast_update();
 		}
-
-		/*
-		let mut state = self.0.write().expect("failed to open writing on input state");
-
-		let Some(switch_id) = state.switch_bindings.get(&key) else { return };
-
-		let was_pressed = state.active_switches.contains(&**switch_id);
-		if is_pressed == was_pressed { return }
-
-		let switch_id = switch_id.clone();
-		if is_pressed {
-			state.active_switches.insert(switch_id.as_ref().clone());
-		}
-		else
-		{
-			state.active_switches.remove(&*switch_id.as_ref());
-		}
-
-		let Some(app) = &state.app else { return };
-		log::debug!("{:?}", state.active_switches);
-		let _ = app.emit_all("input", InputUpdate(state.active_switches.clone()));
-		*/
 	}
 
 	fn broadcast_update(&self) {
 		let state = self.0.read().expect("failed to open writing on input state");
 		log::debug!(
-			"{}: {{{}}} {:?}", state.active_layer,
+			"{:?}: {{{}}} {:?}",
+			state.shared_state.active_layers,
 			state.pressed_hotkeys.iter().map(HotKey::to_string).join(", "),
-			state.active_bindings.keys().collect::<Vec<_>>()
+			state.shared_state.active_switches
 		);
+
+		let Some(app) = &state.app else { return };
+		let _ = app.emit_all("input", state.shared_state.clone());
 	}
 }
 
@@ -282,12 +292,13 @@ fn main() -> anyhow::Result<()> {
 
 					let _ = app.emit_all("layout", config.layout().clone());
 
-					/*
 					let _ = app.emit_all(
 						"input",
-						InputUpdate(["l1".into(), "r2".into(), "r4".into(), "l3".into()].into()),
+						shared::InputState {
+							active_layers: [config.layout().default_layer().clone()].into(),
+							..Default::default()
+						},
 					);
-					*/
 				}
 			});
 

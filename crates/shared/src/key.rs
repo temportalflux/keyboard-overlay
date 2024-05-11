@@ -247,6 +247,40 @@ pub enum KeyAlias {
 	Question,
 }
 
+impl KeyAlias {
+	pub fn is_alpha(&self) -> bool {
+		static ALPHA: [KeyAlias; 26] = [
+			KeyAlias::KeyA,
+			KeyAlias::KeyB,
+			KeyAlias::KeyC,
+			KeyAlias::KeyD,
+			KeyAlias::KeyE,
+			KeyAlias::KeyF,
+			KeyAlias::KeyG,
+			KeyAlias::KeyH,
+			KeyAlias::KeyI,
+			KeyAlias::KeyJ,
+			KeyAlias::KeyK,
+			KeyAlias::KeyL,
+			KeyAlias::KeyM,
+			KeyAlias::KeyN,
+			KeyAlias::KeyO,
+			KeyAlias::KeyP,
+			KeyAlias::KeyQ,
+			KeyAlias::KeyR,
+			KeyAlias::KeyS,
+			KeyAlias::KeyT,
+			KeyAlias::KeyU,
+			KeyAlias::KeyV,
+			KeyAlias::KeyW,
+			KeyAlias::KeyX,
+			KeyAlias::KeyY,
+			KeyAlias::KeyZ,
+		];
+		ALPHA.contains(&self)
+	}
+}
+
 impl std::fmt::Display for KeyAlias {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		write!(

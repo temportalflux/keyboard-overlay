@@ -1,5 +1,5 @@
 use futures::StreamExt;
-use shared::{BoundSwitch, InputUpdate, Layout, Side};
+use shared::{Binding, BindingDisplay, BoundSwitch, InputState, Layout, Side, SwitchSlot};
 use tauri_sys::event::listen;
 use wasm_bindgen::prelude::*;
 use yew::prelude::*;
@@ -46,11 +46,11 @@ fn sample_layout() -> anyhow::Result<Layout> {
 fn App() -> Html {
 	let icon_scale = use_state_eq(|| 1.0f64);
 	let layout = use_state_eq(|| None::<Layout>);
-	let input_update = use_state_eq(|| None::<InputUpdate>);
+	let input_state = use_state_eq(|| InputState::default());
 
 	let icon_scale_handle = icon_scale.clone();
 	let layout_handle = layout.clone();
-	let input_handle = input_update.clone();
+	let input_handle = input_state.clone();
 	use_mount(move || {
 		if !is_bound() {
 			log::debug!("ignoring event listeners");
@@ -80,10 +80,10 @@ fn App() -> Html {
 
 		let input_update = input_handle.clone();
 		spawn_local("recv::input", async move {
-			let mut stream = listen::<InputUpdate>("input").await?;
+			let mut stream = listen::<InputState>("input").await?;
 			while let Some(event) = stream.next().await {
 				//log::debug!(target: "recv::input", "update: {:?}", event.payload);
-				input_update.set(Some(event.payload));
+				input_update.set(event.payload);
 			}
 			Ok(()) as anyhow::Result<()>
 		});
@@ -91,48 +91,40 @@ fn App() -> Html {
 		spawn_local("ready", tauri_sys::event::emit("ready", &()));
 	});
 
-	let active_layer = input_update.as_ref().map(|input| &input.active_layer);
-	let default_layer = layout.as_ref().map(|layout| layout.default_layer());
-	let current_layer = active_layer.or(default_layer);
-
 	let layout_style = Style::default().with("--icon-scale", *icon_scale);
+
+	let mut switches = Vec::with_capacity(40);
+	if let Some(layout) = layout.as_ref() {
+		'switch: for (switch_id, switch) in layout.switches().iter() {
+			for layer_id in layout.layer_order().iter().rev() {
+				if !input_state.is_layer_active(layer_id) {
+					continue;
+				}
+				let Some(layer) = layout.get_layer(layer_id) else {
+					continue;
+				};
+				let Some(bindings) = layer.get_binding(switch_id) else {
+					continue;
+				};
+
+				switches.push(html!(<KeySwitch
+					switch_id={switch_id.clone()}
+					switch={*switch}
+					bindings={bindings.clone()}
+					active_slot={input_state.active_switches.get(switch_id).cloned()}
+				/>));
+
+				continue 'switch;
+			}
+		}
+	}
 
 	html! {<>
 		<div class="guideline x" />
 		<div class="guideline y" />
 		<div style="display: none;"><img src="https://raw.githubusercontent.com/tapioki/cephalopoda/main/Images/architeuthis_dux.png" style="height: 400px; margin-left: -150px; margin-top: 100px;" /></div>
-		<div class="switch active" style="--x: -10px; --y: 60px;">
-			<div class="center">
-				<div class="label">{"w"}</div>
-			</div>
-			<div class="bottom">
-				<div class="label">{"ctrl"}</div>
-			</div>
-		</div>
-		<div class="switch" style="--x: -10px; --y: 0px;">
-			<div class="center">
-				<img class="icon" style="--glyph: url(assets/glyph/space.svg);" />
-			</div>
-			<div class="bottom">
-				<div class="label">{"NUM"}</div>
-			</div>
-		</div>
-
 		<div style={layout_style}>
-			{layout.as_ref().zip(current_layer).map(|(layout, layer_id)| {
-				let layer = layout.get_layer(&layer_id)?;
-				let iter = layout.switches().iter();
-				let iter = iter.map(|(switch_id, switch)| (switch_id, switch, layer.get_binding(switch_id)));
-				let switches = iter.map(|(switch_id, switch, binding)| html!(
-					<KeySwitch
-						switch_id={switch_id.clone()}
-						switch={*switch}
-						binding={binding.cloned()}
-						is_active={input_update.as_ref().map(|input| input.active_switches.contains(switch_id)).unwrap_or(false)}
-					/>
-				)).collect::<Vec<_>>();
-				Some(html!(<>{switches}</>))
-			}).flatten()}
+			{switches}
 		</div>
 	</>}
 }
@@ -141,8 +133,8 @@ fn App() -> Html {
 pub struct KeySwitchProps {
 	pub switch_id: AttrValue,
 	pub switch: shared::Switch,
-	pub binding: Option<BoundSwitch>,
-	pub is_active: bool,
+	pub bindings: BoundSwitch,
+	pub active_slot: Option<SwitchSlot>,
 }
 
 #[function_component]
@@ -150,66 +142,50 @@ fn KeySwitch(
 	KeySwitchProps {
 		switch_id,
 		switch,
-		binding,
-		is_active,
+		bindings,
+		active_slot,
 	}: &KeySwitchProps,
 ) -> Html {
-	let class = classes!("key");
+	let mut class = classes!("switch");
 	let mut pos = switch.pos;
 	if switch.side.is_some() {
 		pos.0 = pos.0.abs();
 	}
-	let style = Style::from([
-		("--x", format!("{}px", pos.0)),
-		("--y", format!("{}px", pos.1)),
-		("--width", "64px".into()),
-		("--height", "64px".into()),
-	]);
-	let glyph_style = match is_active {
-		false => InputGlyphStyle::Outline,
-		true => InputGlyphStyle::Fill,
-	};
-	let binding = binding.clone().unwrap_or_default();
-	// <InputGlyph name={binding.clone()} style={glyph_style} />
-	html!(<div id={switch_id.clone()} {class} {style} side={switch.side.as_ref().map(Side::to_string)}>
-		
+	let style = Style::from([("--x", format!("{}px", pos.0)), ("--y", format!("{}px", pos.1))]);
+
+	if active_slot.is_some() {
+		class.push("active");
+	}
+
+	fn element(slot: &SwitchSlot, binding: &Binding) -> Html {
+		let mut class = classes!("slot");
+		match slot {
+			SwitchSlot::Tap => class.push("center"),
+			SwitchSlot::Hold => class.push("bottom"),
+		}
+		let element = match &binding.display {
+			None => html!(<div class="label">{binding.input.to_string()}</div>),
+			Some(BindingDisplay::Text(value)) => html!(<div class="label">{value}</div>),
+			Some(BindingDisplay::IconBootstrap(value)) => html!(
+				<i class={format!("bi bi-{value}")} />
+			),
+			Some(BindingDisplay::IconCustom(value)) => html!(
+				<img class={"icon"} style={format!("--glyph: url(assets/glyph/{value}.svg);")} />
+			),
+		};
+
+		let layer = binding.layer.clone();
+		html!(<div {class} {layer}>{element}</div>)
+	}
+
+	let mut contents = Vec::new();
+	for (slot, binding) in &bindings.slots {
+		contents.push(element(slot, binding));
+	}
+
+	let side = switch.side.as_ref().map(Side::to_string);
+	let active_slot = active_slot.as_ref().map(SwitchSlot::to_string);
+	html!(<div id={switch_id.clone()} {class} {style} {side} {active_slot}>
+		{contents}
 	</div>)
-}
-
-#[derive(Clone, Copy, PartialEq)]
-pub enum InputGlyphStyle {
-	Fill,
-	Outline,
-}
-impl std::fmt::Display for InputGlyphStyle {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		write!(
-			f,
-			"{}",
-			match self {
-				Self::Fill => "fill",
-				Self::Outline => "outline",
-			}
-		)
-	}
-}
-
-#[derive(Clone, PartialEq, Properties)]
-pub struct InputGlyphProps {
-	pub name: AttrValue,
-	pub style: Option<InputGlyphStyle>,
-}
-
-#[function_component]
-pub fn InputGlyph(InputGlyphProps { name, style }: &InputGlyphProps) -> Html {
-	let mut class = classes!("input-glyph", name);
-	let mut src = format!("assets/input-prompts");
-	if let Some(style) = style {
-		src += &format!("/{style}");
-		class.push(style.to_string());
-	}
-	src += &format!("/{name}.svg");
-
-	let style = Style::from([("--glyph", format!("url({src})"))]);
-	html!(<img {class} {style} />)
 }

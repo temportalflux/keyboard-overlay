@@ -10,6 +10,7 @@ use std::collections::BTreeMap;
 pub struct Layout {
 	switches: BTreeMap<String, Switch>,
 	default_layer: String,
+	layer_order: Vec<String>,
 	layers: BTreeMap<String, Layer>,
 }
 
@@ -24,6 +25,10 @@ impl Layout {
 
 	pub fn get_layer(&self, id: impl AsRef<str>) -> Option<&Layer> {
 		self.layers.get(id.as_ref())
+	}
+
+	pub fn layer_order(&self) -> &Vec<String> {
+		&self.layer_order
 	}
 
 	pub fn layers(&self) -> &BTreeMap<String, Layer> {
@@ -44,16 +49,19 @@ impl FromKdl<()> for Layout {
 			switches.insert(name, switch);
 		}
 
+		let mut layer_order = Vec::new();
 		let mut layers = BTreeMap::new();
 		for mut node in node.query_all("scope() > layer")? {
 			let name = node.next_str_req()?.to_owned();
 			let layer = Layer::from_kdl(&mut node)?;
+			layer_order.push(name.clone());
 			layers.insert(name, layer);
 		}
 
 		Ok(Self {
 			switches,
 			default_layer,
+			layer_order,
 			layers,
 		})
 	}
@@ -66,7 +74,8 @@ impl AsKdl for Layout {
 		for (name, switch) in &self.switches {
 			node.push_child_t(("switch", &(name, switch)));
 		}
-		for (name, layer) in &self.layers {
+		for name in &self.layer_order {
+			let Some(layer) = self.layers.get(name) else { continue };
 			node.push_child_t(("layer", &(name, layer)));
 		}
 		node
@@ -115,27 +124,71 @@ impl AsKdl for Layer {
 	}
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum SwitchSlot {
+	Tap,
+	Hold,
+}
+
+#[derive(thiserror::Error, Debug)]
+#[error("Invalid switch slot {0}, expectd Tap or Hold")]
+pub struct InvalidSlot(String);
+
+impl std::str::FromStr for SwitchSlot {
+	type Err = InvalidSlot;
+
+	fn from_str(s: &str) -> Result<Self, Self::Err> {
+		match s {
+			"Tap" => Ok(Self::Tap),
+			"Hold" => Ok(Self::Hold),
+			_ => Err(InvalidSlot(s.to_owned())),
+		}
+	}
+}
+
+impl std::fmt::Display for SwitchSlot {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		write!(
+			f,
+			"{}",
+			match self {
+				Self::Tap => "Tap",
+				Self::Hold => "Hold",
+			}
+		)
+	}
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct BoundSwitch {
-	pub tap: Option<Binding>,
-	pub hold: Option<Binding>,
+	pub slots: BTreeMap<SwitchSlot, Binding>,
 }
 
 impl FromKdl<()> for BoundSwitch {
 	type Error = anyhow::Error;
 
 	fn from_kdl<'doc>(node: &mut kdlize::NodeReader<'doc, ()>) -> Result<Self, Self::Error> {
-		let tap = node.query_opt_t("scope() > tap")?;
-		let hold = node.query_opt_t("scope() > hold")?;
-		Ok(Self { tap, hold })
+		let mut slots = BTreeMap::new();
+		for mut node in node.query_all("scope() > slot")? {
+			let slot = node.next_str_req_t::<SwitchSlot>()?;
+			let binding = Binding::from_kdl(&mut node)?;
+			slots.insert(slot, binding);
+		}
+		Ok(Self { slots })
 	}
 }
 
 impl AsKdl for BoundSwitch {
 	fn as_kdl(&self) -> kdlize::NodeBuilder {
 		let mut node = kdlize::NodeBuilder::default();
-		node.push_child_t(("tap", &self.tap));
-		node.push_child_t(("hold", &self.hold));
+		for (slot, binding) in &self.slots {
+			node.push_child(
+				kdlize::NodeBuilder::default()
+					.with_entry(slot.to_string())
+					.with_extension(binding.as_kdl())
+					.build("slot"),
+			);
+		}
 		node
 	}
 }

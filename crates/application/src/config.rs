@@ -1,10 +1,10 @@
 use derivative::Derivative;
 use kdlize::{ext::DocumentExt, AsKdl, FromKdl, OmitIfEmpty};
 use serde::{Deserialize, Serialize};
-use std::{collections::{BTreeMap, HashSet}, sync::Mutex};
-
-// TODO: multiple layouts (consider naming layouts? figure out how to associate them with different keyboards)
-// TODO: load from url
+use std::{
+	collections::{BTreeMap, HashSet},
+	sync::Mutex,
+};
 
 #[derive(Default)]
 pub struct ConfigMutex(Mutex<Config>);
@@ -482,38 +482,6 @@ fn dealias_code(alias: shared::KeyAlias) -> Option<rdev::Key> {
 	}
 }
 
-fn is_alpha(code: rdev::Key) -> bool {
-	static ALPHA: [rdev::Key; 26] = [
-		rdev::Key::KeyA,
-		rdev::Key::KeyB,
-		rdev::Key::KeyC,
-		rdev::Key::KeyD,
-		rdev::Key::KeyE,
-		rdev::Key::KeyF,
-		rdev::Key::KeyG,
-		rdev::Key::KeyH,
-		rdev::Key::KeyI,
-		rdev::Key::KeyJ,
-		rdev::Key::KeyK,
-		rdev::Key::KeyL,
-		rdev::Key::KeyM,
-		rdev::Key::KeyN,
-		rdev::Key::KeyO,
-		rdev::Key::KeyP,
-		rdev::Key::KeyQ,
-		rdev::Key::KeyR,
-		rdev::Key::KeyS,
-		rdev::Key::KeyT,
-		rdev::Key::KeyU,
-		rdev::Key::KeyV,
-		rdev::Key::KeyW,
-		rdev::Key::KeyX,
-		rdev::Key::KeyY,
-		rdev::Key::KeyZ,
-	];
-	ALPHA.contains(&code)
-}
-
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub struct HotKey {
 	pub code: rdev::Key,
@@ -556,8 +524,15 @@ impl HotKey {
 		keys
 	}
 
-	fn is_missing_mod(code: rdev::Key, want_mod: bool, mod_types: &[rdev::Key], pressed_keys: &HashSet<rdev::Key>) -> bool {
-		let any_mod_pressed = mod_types.iter().fold(false, |any_pressed, key| any_pressed || pressed_keys.contains(key));
+	fn is_missing_mod(
+		code: rdev::Key,
+		want_mod: bool,
+		mod_types: &[rdev::Key],
+		pressed_keys: &HashSet<rdev::Key>,
+	) -> bool {
+		let any_mod_pressed = mod_types
+			.iter()
+			.fold(false, |any_pressed, key| any_pressed || pressed_keys.contains(key));
 		!mod_types.contains(&code) && want_mod != any_mod_pressed
 	}
 
@@ -567,30 +542,28 @@ impl HotKey {
 		}
 
 		if Self::is_missing_mod(
-			self.code, self.shift,
-			&[rdev::Key::ShiftLeft, rdev::Key::ShiftRight], keys
+			self.code,
+			self.shift,
+			&[rdev::Key::ShiftLeft, rdev::Key::ShiftRight],
+			keys,
 		) {
 			return false;
 		}
-		
+
 		if Self::is_missing_mod(
-			self.code, self.ctrl,
-			&[rdev::Key::ControlLeft, rdev::Key::ControlRight], keys
+			self.code,
+			self.ctrl,
+			&[rdev::Key::ControlLeft, rdev::Key::ControlRight],
+			keys,
 		) {
 			return false;
 		}
-		
-		if Self::is_missing_mod(
-			self.code, self.alt,
-			&[rdev::Key::Alt, rdev::Key::AltGr], keys
-		) {
+
+		if Self::is_missing_mod(self.code, self.alt, &[rdev::Key::Alt, rdev::Key::AltGr], keys) {
 			return false;
 		}
-		
-		if Self::is_missing_mod(
-			self.code, self.meta,
-			&[rdev::Key::MetaLeft, rdev::Key::MetaRight], keys
-		) {
+
+		if Self::is_missing_mod(self.code, self.meta, &[rdev::Key::MetaLeft, rdev::Key::MetaRight], keys) {
 			return false;
 		}
 
@@ -626,7 +599,7 @@ pub fn alias_hotkeys(alias: shared::KeyAlias) -> Vec<HotKey> {
 			..Default::default()
 		});
 		// Lower to Upper casings
-		if is_alpha(code) {
+		if alias.is_alpha() {
 			hotkeys.push(HotKey {
 				code,
 				shift: true,

@@ -1,3 +1,5 @@
+@import url("https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css");
+
 html {
 	-ms-overflow-style: none;
 	scrollbar-width: none;
@@ -29,49 +31,6 @@ body {
 	width: 100%;
 }
 
-@mixin glyph_mask {
-	--glyph: "";
-	-webkit-mask: var(--glyph) no-repeat 50% 50%;
-	mask: var(--glyph) no-repeat 50% 50%;
-	background-color: #ffffffff;
-}
-.input-glyph {
-	@include glyph_mask;
-	width: 64px;
-	height: 64px;
-}
-
-.key {
-	--x: 0px;
-	--y: 0px;
-	--width: 10px;
-	--height: 10px;
-	--scale: 1;
-	--scale-x: calc(var(--scale) * 1);
-	--scale-y: calc(var(--scale) * -1);
-	position: absolute;
-	--offset-x: calc(var(--scale-x) * var(--x) * var(--icon-scale));
-	--offset-y: calc(var(--scale-y) * var(--y) * var(--icon-scale));
-	--center-x: calc(0.5 * var(--width) * var(--icon-scale));
-	--center-y: calc(0.5 * var(--height) * var(--icon-scale));
-	left: calc(50% + var(--offset-x) - var(--center-x) + 10px);
-	top: calc(50% + var(--offset-y) - var(--center-y));
-	width: calc(var(--width) * var(--icon-scale));
-	height: calc(var(--height) * var(--icon-scale));
-
-	> .input-glyph {
-		width: var(--width);
-		height: var(--height);
-		transform: translate(calc(-0.25 * var(--width)), calc(-0.25 * var(--height))) scale(var(--icon-scale));
-	}
-}
-.key[side="left"] {
-	--scale-x: -1;
-}
-.key[side="right"] {
-	--scale-x: 1;
-}
-
 .switch {
 	position: absolute;
 	--x: 0px;
@@ -99,6 +58,7 @@ body {
 	display: flex;
 	flex-direction: column;
 	align-items: center;
+	justify-content: center;
 
 	.label {
 		font-family: 'Ubuntu Mono';
@@ -114,13 +74,22 @@ body {
 		width: 0px;
 		height: 0px;
 	}
+	.bi {
+		-webkit-text-stroke: 1px;
+	}
 
-	> .center {
-		margin-top: auto;
-		
+	.slot[layer] {
 		> .label {
-			font-size: 40px;
-			margin-bottom: 5px;
+			color: #39a3ff;
+		}
+		> .icon {
+			background-color: #39a3ff;
+		}
+	}
+
+	> .slot.center {		
+		> .label {
+			font-size: 30px;
 			line-height: 25px;
 		}
 		> .icon {
@@ -128,12 +97,18 @@ body {
 			height: 20px;
 		}
 	}
-	> .bottom {
+	> .slot.bottom {
 		> .label {
 			font-size: 14px;
 			line-height: 14px;
 		}
 	}
+}
+.switch[side="left"] {
+	--scale-x: -1;
+}
+.switch[side="right"] {
+	--scale-x: 1;
 }
 .switch.active {
 	background-color: #ffffffff;
@@ -141,7 +116,20 @@ body {
 	.label {
 		color: rgba(45, 45, 45, 1.0);
 	}
+	.bi {
+		color: rgba(45, 45, 45, 1.0);
+	}
 	.icon {
 		background-color: rgba(45, 45, 45, 1.0);
+	}
+}
+.switch.active[active_slot="Tap"] {
+	.slot.bottom {
+		visibility: hidden;
+	}
+}
+.switch.active[active_slot="Hold"] {
+	.slot.center {
+		visibility: hidden;
 	}
 }
