@@ -1,3 +1,5 @@
+use enumset::{EnumSet, EnumSetType};
+use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 
 #[derive(thiserror::Error, Debug)]
@@ -6,7 +8,7 @@ pub struct InvalidKeyAlias(String);
 
 /// Literal USB key id that the os interprets based on provided modifiers.
 /// See [this for more](https://www.reddit.com/r/ErgoMechKeyboards/comments/ujhp0g/comment/i7j0nko/?utm_source=share&utm_medium=web3x&utm_name=web3xcss&utm_term=1&utm_content=share_button).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, EnumSetType, Serialize, Deserialize)]
 pub enum KeyAlias {
 	Backquote,
 	Backslash,
@@ -770,5 +772,42 @@ impl std::str::FromStr for KeyAlias {
 			// Unknown
 			s => Err(InvalidKeyAlias(s.to_owned())),
 		}
+	}
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+
+pub struct KeyCombo(EnumSet<KeyAlias>);
+
+impl KeyCombo {
+	pub fn get_single(&self) -> Option<KeyAlias> {
+		match self.0.len() {
+			1 => self.iter().next(),
+			_ => None,
+		}
+	}
+
+	pub fn iter(&self) -> impl Iterator<Item = KeyAlias> {
+		self.0.iter()
+	}
+}
+
+impl std::fmt::Display for KeyCombo {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		write!(
+			f, "{}",
+			self.0.iter().map(|alias| alias.to_string()).join("+")
+		)
+	}
+}
+
+impl std::str::FromStr for KeyCombo {
+	type Err = InvalidKeyAlias;
+	fn from_str(s: &str) -> Result<Self, Self::Err> {
+		let mut combo = EnumSet::empty();
+		for alias_str in s.split("+") {
+			combo.insert(KeyAlias::from_str(alias_str)?);
+		}
+		Ok(Self(combo))
 	}
 }

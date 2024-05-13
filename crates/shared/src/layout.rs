@@ -1,4 +1,4 @@
-use crate::{KeyAlias, Switch};
+use crate::{KeyCombo, Switch};
 use kdlize::{
 	ext::{DocumentExt, ValueExt},
 	AsKdl, FromKdl,
@@ -195,7 +195,7 @@ impl AsKdl for BoundSwitch {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Binding {
-	pub input: KeyAlias,
+	pub input: KeyCombo,
 	pub display: Option<BindingDisplay>,
 	pub layer: Option<String>,
 }
@@ -215,7 +215,7 @@ impl FromKdl<()> for Binding {
 	type Error = anyhow::Error;
 
 	fn from_kdl<'doc>(node: &mut kdlize::NodeReader<'doc, ()>) -> Result<Self, Self::Error> {
-		let input = node.next_str_req_t::<KeyAlias>()?;
+		let input = node.next_str_req_t::<KeyCombo>()?;
 		let display = match node.next_opt() {
 			None => None,
 			Some(entry) => {

@@ -524,6 +524,16 @@ impl HotKey {
 		keys
 	}
 
+	fn insert(&mut self, code: rdev::Key) {
+		match code {
+			rdev::Key::ShiftLeft | rdev::Key::ShiftRight => self.shift = true,
+			rdev::Key::ControlLeft | rdev::Key::ControlRight => self.ctrl = true,
+			rdev::Key::Alt | rdev::Key::AltGr => self.alt = true,
+			rdev::Key::MetaLeft | rdev::Key::MetaRight => self.meta = true,
+			_ => self.code = code,
+		}
+	}
+
 	fn is_missing_mod(
 		code: rdev::Key,
 		want_mod: bool,
@@ -589,17 +599,28 @@ impl std::fmt::Display for HotKey {
 	}
 }
 
-pub fn alias_hotkeys(alias: shared::KeyAlias) -> Vec<HotKey> {
+pub fn alias_hotkeys(combo: shared::KeyCombo) -> Vec<HotKey> {
 	let mut hotkeys = Vec::with_capacity(3);
-
-	// Simple conversions, alias directly matches some code
-	if let Some(code) = key_alias_to_code(alias) {
-		hotkeys.push(HotKey {
-			code,
-			..Default::default()
-		});
-		// Lower to Upper casings
-		if alias.is_alpha() {
+	
+	if let Some(alias) = combo.get_single() {
+		// Simple conversions, alias directly matches some code
+		if let Some(code) = key_alias_to_code(alias) {
+			hotkeys.push(HotKey {
+				code,
+				..Default::default()
+			});
+			// Lower to Upper casings
+			if alias.is_alpha() {
+				hotkeys.push(HotKey {
+					code,
+					shift: true,
+					..Default::default()
+				});
+			}
+		}
+	
+		// Symbols which are represented by other codes
+		if let Some(code) = dealias_code(alias) {
 			hotkeys.push(HotKey {
 				code,
 				shift: true,
@@ -607,14 +628,13 @@ pub fn alias_hotkeys(alias: shared::KeyAlias) -> Vec<HotKey> {
 			});
 		}
 	}
-
-	// Symbols which are represented by other codes
-	if let Some(code) = dealias_code(alias) {
-		hotkeys.push(HotKey {
-			code,
-			shift: true,
-			..Default::default()
-		});
+	else {
+		let mut hotkey = HotKey::default();
+		for alias in combo.iter() {
+			let Some(code) = key_alias_to_code(alias) else { continue };
+			hotkey.insert(code);
+		}
+		hotkeys.push(hotkey);
 	}
 
 	hotkeys

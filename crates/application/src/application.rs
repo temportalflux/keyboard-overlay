@@ -64,7 +64,7 @@ struct InputBinding {
 	layer_id: Arc<String>,
 	switch_id: Arc<String>,
 	slot: shared::SwitchSlot,
-	key: shared::KeyAlias,
+	key: shared::KeyCombo,
 	target_layer: Option<Arc<String>>,
 }
 
