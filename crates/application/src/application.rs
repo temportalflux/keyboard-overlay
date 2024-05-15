@@ -136,7 +136,7 @@ impl GlobalInputState {
 						switch_id: switch_id.clone(),
 						slot: *slot,
 						target_layer,
-						key: binding.input,
+						key: binding.input.clone(),
 					});
 				}
 			}
@@ -145,7 +145,7 @@ impl GlobalInputState {
 
 	fn insert_binding(&self, input_binding: InputBinding) {
 		let mut state = self.0.write().expect("failed to open writing on input state");
-		for hotkey in alias_hotkeys(input_binding.key) {
+		for hotkey in alias_hotkeys(&input_binding.key) {
 			for code in hotkey.relevant_keys() {
 				state.key_to_relevant_hotkeys.insert(code, hotkey);
 			}
@@ -303,7 +303,11 @@ fn main() -> anyhow::Result<()> {
 			});
 
 			let window = app.get_window("main").ok_or(tauri::Error::InvalidWindowHandle)?;
-			//window.set_ignore_cursor_events(true)?;
+			
+			// If not in debug mode, then ignore cursor events on the window
+			if !cfg!(debug_assertions) {
+				window.set_ignore_cursor_events(true)?;
+			}
 
 			// Associate the app to global_input so that when input changes, it can be propagated to app events.
 			{
@@ -398,12 +402,11 @@ fn main() -> anyhow::Result<()> {
 									} else if let Ok(clipboard_text) = clipboard.read_text() {
 										if let Ok(url) = reqwest::Url::parse(&clipboard_text) {
 											let app = app.clone();
-											tauri::async_runtime::spawn(async move {
+											spawn("config", async move {
 												log::info!("Uploading config from url {url}");
 												let response = reqwest::get(url).await?;
 												let contents = response.text().await?;
 												upload_config(&app, &contents)?;
-												// TODO: log errors
 												Ok(()) as anyhow::Result<()>
 											});
 										} else {
@@ -549,4 +552,15 @@ fn move_window_to_position(window: &tauri::Window, position: WindowPosition) -> 
 		pos
 	})?;
 	Ok(())
+}
+
+pub fn spawn<F, E>(target: &'static str, future: F)
+where
+	F: futures::Future<Output = Result<(), E>> + 'static + Send,
+	E: 'static + std::fmt::Debug,
+{
+	tauri::async_runtime::spawn(async move {
+		let Err(err) = future.await else { return };
+		log::error!(target: target, "{err:?}");
+	});
 }

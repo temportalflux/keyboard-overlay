@@ -1,14 +1,15 @@
-use enumset::{EnumSet, EnumSetType};
+use anyhow::Context;
 use itertools::Itertools;
+use std::collections::BTreeSet;
 use serde::{Deserialize, Serialize};
 
 #[derive(thiserror::Error, Debug)]
-#[error("Invalid key id {0}")]
+#[error("Invalid key alias {0:?}")]
 pub struct InvalidKeyAlias(String);
 
 /// Literal USB key id that the os interprets based on provided modifiers.
 /// See [this for more](https://www.reddit.com/r/ErgoMechKeyboards/comments/ujhp0g/comment/i7j0nko/?utm_source=share&utm_medium=web3x&utm_name=web3xcss&utm_term=1&utm_content=share_button).
-#[derive(Debug, EnumSetType, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum KeyAlias {
 	Backquote,
 	Backslash,
@@ -775,19 +776,19 @@ impl std::str::FromStr for KeyAlias {
 	}
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 
-pub struct KeyCombo(EnumSet<KeyAlias>);
+pub struct KeyCombo(BTreeSet<KeyAlias>);
 
 impl KeyCombo {
 	pub fn get_single(&self) -> Option<KeyAlias> {
 		match self.0.len() {
-			1 => self.iter().next(),
+			1 => self.iter().next().cloned(),
 			_ => None,
 		}
 	}
 
-	pub fn iter(&self) -> impl Iterator<Item = KeyAlias> {
+	pub fn iter(&self) -> impl Iterator<Item = &KeyAlias> {
 		self.0.iter()
 	}
 }
@@ -802,11 +803,17 @@ impl std::fmt::Display for KeyCombo {
 }
 
 impl std::str::FromStr for KeyCombo {
-	type Err = InvalidKeyAlias;
+	type Err = anyhow::Error;
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
-		let mut combo = EnumSet::empty();
+		let mut combo = BTreeSet::new();
+		if s == "+" {
+			combo.insert(KeyAlias::from_str(s)?);
+			return Ok(Self(combo));
+		}
 		for alias_str in s.split("+") {
-			combo.insert(KeyAlias::from_str(alias_str)?);
+			let alias = KeyAlias::from_str(alias_str);
+			let alias = alias.with_context(|| format!("processing combo {s:?} w/ substr {alias_str:?}"));
+			combo.insert(alias?);
 		}
 		Ok(Self(combo))
 	}
