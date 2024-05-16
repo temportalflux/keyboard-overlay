@@ -156,12 +156,12 @@ impl FromKdl<()> for Config {
 impl AsKdl for Config {
 	fn as_kdl(&self) -> kdlize::NodeBuilder {
 		let mut node = kdlize::NodeBuilder::default();
-		node.push_child_t(("default_profile", &self.default_profile));
-		node.push_child_t(("active_profile", &self.active_profile, OmitIfEmpty));
+		node.child(("default_profile", &self.default_profile));
+		node.child(("active_profile", &self.active_profile, OmitIfEmpty));
 		for (name, profile) in &self.profiles {
-			node.push_child_t(("profile", &(name, profile)));
+			node.child(("profile", &(name, profile)));
 		}
-		node.push_child_t(("layout", &self.layout));
+		node.child(("layout", &self.layout));
 		node
 	}
 }
@@ -192,16 +192,16 @@ impl FromKdl<()> for DisplayProfile {
 impl AsKdl for DisplayProfile {
 	fn as_kdl(&self) -> kdlize::NodeBuilder {
 		let mut node = kdlize::NodeBuilder::default();
-		node.push_child({
+		node.child({
 			let mut node = kdlize::NodeBuilder::default();
-			node.push_entry(self.size.0 as i64);
-			node.push_entry(self.size.1 as i64);
+			node.entry(self.size.0 as i64);
+			node.entry(self.size.1 as i64);
 			node.build("size")
 		});
 		if self.scale != 1.0 {
-			node.push_child_t(("scale", &self.scale));
+			node.child(("scale", &self.scale));
 		}
-		node.push_child_t(("location", &self.location));
+		node.child(("location", &self.location));
 		node
 	}
 }
@@ -238,13 +238,13 @@ impl AsKdl for WindowPosition {
 	fn as_kdl(&self) -> kdlize::NodeBuilder {
 		let mut node = kdlize::NodeBuilder::default();
 		if self.monitor != 0 {
-			node.push_child_t(("monitor", &(self.monitor + 1)));
+			node.child(("monitor", &(self.monitor + 1)));
 		}
-		node.push_child_t(("anchor", &self.anchor.to_string()));
-		node.push_child({
+		node.child(("anchor", &self.anchor.to_string()));
+		node.child({
 			let mut node = kdlize::NodeBuilder::default();
-			node.push_entry(self.offset.0 as i64);
-			node.push_entry(self.offset.1 as i64);
+			node.entry(self.offset.0 as i64);
+			node.entry(self.offset.1 as i64);
 			node.build("offset")
 		});
 		node
