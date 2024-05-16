@@ -70,13 +70,13 @@ impl FromKdl<()> for Layout {
 impl AsKdl for Layout {
 	fn as_kdl(&self) -> kdlize::NodeBuilder {
 		let mut node = kdlize::NodeBuilder::default();
-		node.push_child_t(("default_layer", &self.default_layer));
+		node.child(("default_layer", &self.default_layer));
 		for (name, switch) in &self.switches {
-			node.push_child_t(("switch", &(name, switch)));
+			node.child(("switch", &(name, switch)));
 		}
 		for name in &self.layer_order {
 			let Some(layer) = self.layers.get(name) else { continue };
-			node.push_child_t(("layer", &(name, layer)));
+			node.child(("layer", &(name, layer)));
 		}
 		node
 	}
@@ -117,8 +117,8 @@ impl AsKdl for Layer {
 		for (switch_id, binding) in &self.bindings {
 			let node_binding = kdlize::NodeBuilder::default()
 				.with_entry(switch_id.as_str())
-				.with_extension(binding.as_kdl());
-			node.push_child(node_binding.build("bind"));
+				.with(binding.as_kdl());
+			node.child(node_binding.build("bind"));
 		}
 		node
 	}
@@ -182,10 +182,10 @@ impl AsKdl for BoundSwitch {
 	fn as_kdl(&self) -> kdlize::NodeBuilder {
 		let mut node = kdlize::NodeBuilder::default();
 		for (slot, binding) in &self.slots {
-			node.push_child(
+			node.child(
 				kdlize::NodeBuilder::default()
 					.with_entry(slot.to_string())
-					.with_extension(binding.as_kdl())
+					.with(binding.as_kdl())
 					.build("slot"),
 			);
 		}
@@ -238,15 +238,15 @@ impl FromKdl<()> for Binding {
 impl AsKdl for Binding {
 	fn as_kdl(&self) -> kdlize::NodeBuilder {
 		let mut node = kdlize::NodeBuilder::default();
-		node.push_entry(self.input.to_string());
+		node.entry(self.input.to_string());
 		if let Some(display) = &self.display {
 			match display {
-				BindingDisplay::Text(value) => node.push_entry(value.as_str()),
-				BindingDisplay::IconBootstrap(value) => node.push_entry_typed("IconBootstrap", value.as_str()),
-				BindingDisplay::IconCustom(value) => node.push_entry_typed("IconCustom", value.as_str()),
+				BindingDisplay::Text(value) => node.entry(value.as_str()),
+				BindingDisplay::IconBootstrap(value) => node.entry_typed("IconBootstrap", value.as_str()),
+				BindingDisplay::IconCustom(value) => node.entry_typed("IconCustom", value.as_str()),
 			}
 		}
-		node.push_entry(("layer", self.layer.clone()));
+		node.entry(("layer", self.layer.clone()));
 		node
 	}
 }

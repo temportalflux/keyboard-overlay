@@ -21,10 +21,10 @@ impl kdlize::FromKdl<()> for Switch {
 impl AsKdl for Switch {
 	fn as_kdl(&self) -> kdlize::NodeBuilder {
 		let mut node = kdlize::NodeBuilder::default();
-		node.push_entry(self.pos.0 as f64);
-		node.push_entry(self.pos.1 as f64);
+		node.entry(self.pos.0 as f64);
+		node.entry(self.pos.1 as f64);
 		if let Some(side) = self.side {
-			node.push_entry(("side", side.to_string()));
+			node.entry(("side", side.to_string()));
 		}
 		node
 	}
