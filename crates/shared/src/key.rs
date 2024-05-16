@@ -1,7 +1,7 @@
 use anyhow::Context;
 use itertools::Itertools;
-use std::collections::BTreeSet;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
 
 #[derive(thiserror::Error, Debug)]
 #[error("Invalid key alias {0:?}")]
@@ -795,10 +795,7 @@ impl KeyCombo {
 
 impl std::fmt::Display for KeyCombo {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		write!(
-			f, "{}",
-			self.0.iter().map(|alias| alias.to_string()).join("+")
-		)
+		write!(f, "{}", self.0.iter().map(|alias| alias.to_string()).join("+"))
 	}
 }
 

@@ -601,7 +601,7 @@ impl std::fmt::Display for HotKey {
 
 pub fn alias_hotkeys(combo: &shared::KeyCombo) -> Vec<HotKey> {
 	let mut hotkeys = Vec::with_capacity(3);
-	
+
 	if let Some(alias) = combo.get_single() {
 		// Simple conversions, alias directly matches some code
 		if let Some(code) = key_alias_to_code(alias) {
@@ -618,7 +618,7 @@ pub fn alias_hotkeys(combo: &shared::KeyCombo) -> Vec<HotKey> {
 				});
 			}
 		}
-	
+
 		// Symbols which are represented by other codes
 		if let Some(code) = dealias_code(alias) {
 			hotkeys.push(HotKey {
@@ -627,11 +627,12 @@ pub fn alias_hotkeys(combo: &shared::KeyCombo) -> Vec<HotKey> {
 				..Default::default()
 			});
 		}
-	}
-	else {
+	} else {
 		let mut hotkey = HotKey::default();
 		for alias in combo.iter() {
-			let Some(code) = key_alias_to_code(*alias) else { continue };
+			let Some(code) = key_alias_to_code(*alias) else {
+				continue;
+			};
 			hotkey.insert(code);
 		}
 		hotkeys.push(hotkey);

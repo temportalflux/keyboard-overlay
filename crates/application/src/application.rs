@@ -1,10 +1,9 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use itertools::Itertools;
 use multimap::MultiMap;
 use std::{
-	collections::{HashMap, HashSet},
+	collections::{BTreeMap, HashMap, HashSet},
 	sync::{Arc, RwLock},
 };
 use tauri::{CustomMenuItem, Manager, SystemTray, SystemTrayEvent, SystemTrayMenu, SystemTraySubmenu};
@@ -55,8 +54,8 @@ struct InputState {
 	pressed_hotkeys: HashSet<HotKey>,
 
 	default_layer: String,
-
-	shared_state: shared::InputState,
+	active_layers: HashSet<String>,
+	active_switches: BTreeMap<String, shared::SwitchSlot>,
 }
 
 #[derive(Debug, Clone)]
@@ -72,7 +71,7 @@ impl InputState {
 	fn can_trigger(&self, binding: &InputBinding) -> bool {
 		for layer_id in self.layer_order.iter().rev() {
 			// The layer being scanned is not active
-			if !self.shared_state.active_layers.contains(layer_id) {
+			if !self.active_layers.contains(layer_id) {
 				continue;
 			}
 			// We found our layer, so it must be able to trigger
@@ -80,7 +79,9 @@ impl InputState {
 				return true;
 			}
 			// This is some layer with higher priority than the binding, so see if this layer blocks it
-			let Some(bound_switches) = self.layer_switches.get(layer_id) else { continue; };
+			let Some(bound_switches) = self.layer_switches.get(layer_id) else {
+				continue;
+			};
 			if bound_switches.contains(&*binding.switch_id) {
 				// something else has the switch bound
 				return false;
@@ -99,13 +100,10 @@ impl GlobalInputState {
 	fn update_bindings(&self, config: &Config) {
 		{
 			let mut state = self.0.write().expect("failed to open writing on input state");
-			state.shared_state = shared::InputState::default();
 
-			state.default_layer = config.layout().default_layer().clone();
-			state
-				.shared_state
-				.active_layers
-				.insert(config.layout().default_layer().clone());
+			let default_layer = config.layout().default_layer();
+			state.default_layer = default_layer.clone();
+			state.active_layers.insert(default_layer.clone());
 
 			state.layer_order = config.layout().layer_order().clone();
 			state.layer_switches.clear();
@@ -120,7 +118,6 @@ impl GlobalInputState {
 			state.pressed_hotkeys.clear();
 		}
 		self.insert_hotkeys(config);
-		self.broadcast_update();
 	}
 
 	fn insert_hotkeys(&self, config: &Config) {
@@ -171,8 +168,6 @@ impl GlobalInputState {
 			return;
 		};
 
-		let mut should_broadcast = false;
-
 		let mut changed_hotkeys = HashSet::with_capacity(10);
 		for hotkey in hotkeys {
 			if hotkey.is_pressed(&state.pressed_keys) {
@@ -186,55 +181,49 @@ impl GlobalInputState {
 			}
 		}
 
+		let mut updates = Vec::new();
 		for hotkey in changed_hotkeys {
 			let pressed = state.pressed_hotkeys.contains(&hotkey);
 			if let Some(bindings) = state.hotkey_bindings.get_vec(&hotkey).cloned() {
 				for binding in bindings {
 					if pressed && state.can_trigger(&binding) {
 						if let Some(new_layer) = &binding.target_layer {
-							state.shared_state.active_layers.insert((**new_layer).clone());
+							updates.push(shared::InputUpdate::LayerActivate((**new_layer).clone()));
 						}
-
-						state
-							.shared_state
-							.active_switches
-							.insert((*binding.switch_id).clone(), binding.slot);
-						should_broadcast = true;
+						updates.push(shared::InputUpdate::SwitchPressed(
+							(*binding.switch_id).clone(),
+							binding.slot,
+						));
 					} else if !pressed {
 						if let Some(layer) = &binding.target_layer {
-							state.shared_state.active_layers.remove(&**layer);
+							updates.push(shared::InputUpdate::LayerDeactivate((**layer).clone()));
 						}
-
-						if state
-							.shared_state
-							.active_switches
-							.remove(&**binding.switch_id)
-							.is_some()
-						{
-							should_broadcast = true;
-						}
+						updates.push(shared::InputUpdate::SwitchReleased((*binding.switch_id).clone()));
 					}
 				}
 			}
 		}
 
-		drop(state);
-		if should_broadcast {
-			self.broadcast_update();
+		for update in updates {
+			match &update {
+				shared::InputUpdate::LayerActivate(layer) => {
+					state.active_layers.insert(layer.clone());
+				}
+				shared::InputUpdate::LayerDeactivate(layer) => {
+					state.active_layers.remove(layer);
+				}
+				shared::InputUpdate::SwitchPressed(switch_id, slot) => {
+					state.active_switches.insert(switch_id.clone(), *slot);
+				}
+				shared::InputUpdate::SwitchReleased(switch_id) => {
+					state.active_switches.remove(switch_id);
+				}
+			}
+
+			if let Some(app) = &state.app {
+				let _ = app.emit_all("input", update);
+			}
 		}
-	}
-
-	fn broadcast_update(&self) {
-		let state = self.0.read().expect("failed to open writing on input state");
-		log::debug!(
-			"{:?}: {{{}}} {:?}",
-			state.shared_state.active_layers,
-			state.pressed_hotkeys.iter().map(HotKey::to_string).join(", "),
-			state.shared_state.active_switches
-		);
-
-		let Some(app) = &state.app else { return };
-		let _ = app.emit_all("input", state.shared_state.clone());
 	}
 }
 
@@ -291,19 +280,15 @@ fn main() -> anyhow::Result<()> {
 					let _ = app.emit_all("scale", icon_scale);
 
 					let _ = app.emit_all("layout", config.layout().clone());
-
 					let _ = app.emit_all(
 						"input",
-						shared::InputState {
-							active_layers: [config.layout().default_layer().clone()].into(),
-							..Default::default()
-						},
+						shared::InputUpdate::LayerActivate(config.layout().default_layer().clone()),
 					);
 				}
 			});
 
 			let window = app.get_window("main").ok_or(tauri::Error::InvalidWindowHandle)?;
-			
+
 			// If not in debug mode, then ignore cursor events on the window
 			if !cfg!(debug_assertions) {
 				window.set_ignore_cursor_events(true)?;
@@ -320,9 +305,10 @@ fn main() -> anyhow::Result<()> {
 				let app = app.handle();
 				move |event| {
 					let Some(payload) = event.payload() else { return };
-					let Ok(config) = serde_json::from_str(payload) else {
+					let Ok(config) = serde_json::from_str::<Config>(payload) else {
 						return;
 					};
+					let _ = app.emit_all("layout", config.layout().clone());
 					let global_input = app.state::<GlobalInputState>();
 					global_input.update_bindings(&config);
 				}

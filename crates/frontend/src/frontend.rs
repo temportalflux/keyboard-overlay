@@ -1,5 +1,6 @@
-use futures::StreamExt;
-use shared::{Binding, BindingDisplay, BoundSwitch, InputState, Layout, Side, SwitchSlot};
+use futures::{SinkExt, StreamExt};
+use shared::{Binding, BindingDisplay, BoundSwitch, InputUpdate, Layout, Side, SwitchSlot};
+use std::collections::{BTreeMap, HashSet};
 use tauri_sys::event::listen;
 use wasm_bindgen::prelude::*;
 use yew::prelude::*;
@@ -42,6 +43,12 @@ fn sample_layout() -> anyhow::Result<Layout> {
 	Ok(layout)
 }
 
+#[derive(Clone, Debug, Default, PartialEq)]
+struct InputState {
+	active_layers: HashSet<String>,
+	active_switches: BTreeMap<String, (SwitchSlot, wasm_timer::Instant)>,
+}
+
 #[function_component]
 fn App() -> Html {
 	let icon_scale = use_state_eq(|| 1.0f64);
@@ -78,12 +85,65 @@ fn App() -> Html {
 			Ok(()) as anyhow::Result<()>
 		});
 
-		let input_update = input_handle.clone();
-		spawn_local("recv::input", async move {
-			let mut stream = listen::<InputState>("input").await?;
-			while let Some(event) = stream.next().await {
-				//log::debug!(target: "recv::input", "update: {:?}", event.payload);
-				input_update.set(event.payload);
+		let (send_input, mut recv_input) = futures::channel::mpsc::unbounded::<InputUpdate>();
+
+		spawn_local("input::recv", {
+			let mut send_input = send_input.clone();
+			async move {
+				let mut stream = listen::<InputUpdate>("input").await?;
+				while let Some(event) = stream.next().await {
+					log::debug!(target: "recv::input", "update: {:?}", event.payload);
+					send_input.send(event.payload).await?;
+				}
+				Ok(()) as anyhow::Result<()>
+			}
+		});
+
+		let input_state = input_handle.clone();
+		spawn_local("input::process", async move {
+			static MIN_PRESS_DURATION: std::time::Duration = std::time::Duration::from_millis(100);
+			let mut local_state = InputState::default();
+			while let Some(update) = recv_input.next().await {
+				match update {
+					InputUpdate::LayerActivate(layer) => {
+						local_state.active_layers.insert(layer);
+					}
+					InputUpdate::LayerDeactivate(layer) => {
+						local_state.active_layers.remove(&layer);
+					}
+					InputUpdate::SwitchPressed(switch_id, slot) => {
+						local_state
+							.active_switches
+							.insert(switch_id, (slot, wasm_timer::Instant::now()));
+					}
+					InputUpdate::SwitchReleased(switch_id) => {
+						let latent_remove_duration = match local_state.active_switches.get(&switch_id) {
+							None => continue,
+							Some((_slot, start_time)) => {
+								let now = wasm_timer::Instant::now();
+								let duration_since_pressed = now.duration_since(*start_time);
+								let duration_remaining = MIN_PRESS_DURATION.saturating_sub(duration_since_pressed);
+								(!duration_remaining.is_zero()).then_some(duration_remaining)
+							}
+						};
+	
+						match latent_remove_duration {
+							None => {
+								local_state.active_switches.remove(&switch_id);
+							}
+							Some(duration_remaining) => {
+								let mut send_input = send_input.clone();
+								spawn_local("recv::input::latent_release", async move {
+									gloo_timers::future::TimeoutFuture::new(duration_remaining.as_millis() as u32).await;
+									send_input.send(InputUpdate::SwitchReleased(switch_id)).await?;
+									Ok(()) as anyhow::Result<()>
+								});
+								continue;
+							}
+						}
+					}
+				}
+				input_state.set(local_state.clone());
 			}
 			Ok(()) as anyhow::Result<()>
 		});
@@ -92,12 +152,13 @@ fn App() -> Html {
 	});
 
 	let layout_style = Style::default().with("--icon-scale", *icon_scale);
+	log::debug!("{:?}", *input_state);
 
 	let mut switches = Vec::with_capacity(40);
 	if let Some(layout) = layout.as_ref() {
 		'switch: for (switch_id, switch) in layout.switches().iter() {
 			for layer_id in layout.layer_order().iter().rev() {
-				if !input_state.is_layer_active(layer_id) {
+				if !input_state.active_layers.contains(layer_id) {
 					continue;
 				}
 				let Some(layer) = layout.get_layer(layer_id) else {
@@ -106,12 +167,14 @@ fn App() -> Html {
 				let Some(bindings) = layer.get_binding(switch_id) else {
 					continue;
 				};
+				let active_slot = input_state.active_switches.get(switch_id);
+				let active_slot = active_slot.map(|(slot, _start_time)| slot);
 
 				switches.push(html!(<KeySwitch
 					switch_id={switch_id.clone()}
 					switch={*switch}
 					bindings={bindings.clone()}
-					active_slot={input_state.active_switches.get(switch_id).cloned()}
+					active_slot={active_slot.cloned()}
 				/>));
 
 				continue 'switch;
