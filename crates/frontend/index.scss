@@ -35,22 +35,11 @@ body {
 	position: absolute;
 	--x: 0px;
 	--y: 0px;
-	--width: 45px;
-	--height: 45px;
-	--scale: 1;
-	--scale-x: calc(var(--scale) * 1);
-	--scale-y: calc(var(--scale) * -1);
-	--offset-x: calc(var(--scale-x) * var(--x));
-	--offset-y: calc(var(--scale-y) * var(--y));
-	--center-x: calc(0.5 * var(--width));
-	--center-y: calc(0.5 * var(--height));
-	left: calc(50% + var(--offset-x) - var(--center-x));
-	top: calc(50% + var(--offset-y) - var(--center-y));
-	width: calc(var(--width));
-	height: calc(var(--height));
+	left: calc(var(--x));
+	top: calc(var(--y));
 
 	border-style: solid;
-	border-width: 3px;
+	border-width: 0px;
 	border-radius: 10px;
 	border-color: #ffffff;
 	background-color: #ffffff00;
@@ -73,9 +62,6 @@ body {
 		background-color: #ffffffff;
 		width: 0px;
 		height: 0px;
-	}
-	.bi {
-		-webkit-text-stroke: 1px;
 	}
 
 	.slot[layer] {
@@ -104,12 +90,6 @@ body {
 		}
 	}
 }
-.switch[side="left"] {
-	--scale-x: -1;
-}
-.switch[side="right"] {
-	--scale-x: 1;
-}
 .switch.active {
 	background-color: #ffffffff;
 	
@@ -132,4 +112,23 @@ body {
 	.slot.center {
 		visibility: hidden;
 	}
+}
+
+svg.link {
+	position: absolute;
+	left: 0;
+	top: 0;
+	width: 700px; // todo
+	height: 380px; // todo
+	pointer-events: none;
+
+	> path {
+		pointer-events: fill;
+	}
+}
+
+// Temporary until custom scss files can be loaded
+.switch.combo#layer_system > .slot.center > .label {
+	font-size: 14px;
+	color: #39a3ff;
 }

@@ -1,10 +1,51 @@
 use kdlize::AsKdl;
 use serde::{Deserialize, Serialize};
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum SwitchSlot {
+	Tap,
+	Hold,
+}
+
+#[derive(thiserror::Error, Debug)]
+#[error("Invalid switch slot {0}, expectd Tap or Hold")]
+pub struct InvalidSlot(String);
+
+impl std::str::FromStr for SwitchSlot {
+	type Err = InvalidSlot;
+
+	fn from_str(s: &str) -> Result<Self, Self::Err> {
+		match s {
+			"Tap" => Ok(Self::Tap),
+			"Hold" => Ok(Self::Hold),
+			_ => Err(InvalidSlot(s.to_owned())),
+		}
+	}
+}
+
+impl std::fmt::Display for SwitchSlot {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		write!(
+			f,
+			"{}",
+			match self {
+				Self::Tap => "Tap",
+				Self::Hold => "Hold",
+			}
+		)
+	}
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Switch {
 	pub pos: (f32, f32),
 	pub side: Option<Side>,
+}
+
+impl Switch {
+	pub fn size(&self) -> f32 {
+		45f32
+	}
 }
 
 impl kdlize::FromKdl<()> for Switch {

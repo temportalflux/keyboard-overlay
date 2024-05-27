@@ -3,7 +3,7 @@
 
 use multimap::MultiMap;
 use std::{
-	collections::{BTreeMap, HashMap, HashSet},
+	collections::{BTreeSet, HashMap, HashSet},
 	sync::{Arc, RwLock},
 };
 use tauri::{CustomMenuItem, Manager, SystemTray, SystemTrayEvent, SystemTrayMenu, SystemTraySubmenu};
@@ -55,15 +55,15 @@ struct InputState {
 
 	default_layer: String,
 	active_layers: HashSet<String>,
-	active_switches: BTreeMap<String, shared::SwitchSlot>,
+	active_switches: BTreeSet<String>,
 }
 
 #[derive(Debug, Clone)]
 struct InputBinding {
-	layer_id: Arc<String>,
+	layer_id: HashSet<Arc<String>>,
 	switch_id: Arc<String>,
-	slot: shared::SwitchSlot,
-	key: shared::KeyCombo,
+	slot: Option<shared::SwitchSlot>,
+	key: shared::KeySet,
 	target_layer: Option<Arc<String>>,
 }
 
@@ -75,7 +75,7 @@ impl InputState {
 				continue;
 			}
 			// We found our layer, so it must be able to trigger
-			if layer_id == &*binding.layer_id {
+			if binding.layer_id.contains(layer_id) {
 				return true;
 			}
 			// This is some layer with higher priority than the binding, so see if this layer blocks it
@@ -122,21 +122,30 @@ impl GlobalInputState {
 
 	fn insert_hotkeys(&self, config: &Config) {
 		for (layer_id, layer) in config.layout().layers() {
-			log::debug!("layer: {layer_id}");
 			let layer_id = Arc::new(layer_id.clone());
 			for (switch_id, bindings) in layer.bindings() {
 				let switch_id = Arc::new(switch_id.clone());
 				for (slot, binding) in &bindings.slots {
 					let target_layer = binding.layer.as_ref().map(Clone::clone).map(Arc::new);
 					self.insert_binding(InputBinding {
-						layer_id: layer_id.clone(),
+						layer_id: [layer_id.clone()].into(),
 						switch_id: switch_id.clone(),
-						slot: *slot,
+						slot: Some(*slot),
 						target_layer,
 						key: binding.input.clone(),
 					});
 				}
 			}
+		}
+		for combo in config.layout().combos() {
+			let target_layer = combo.input_layer.as_ref().map(Clone::clone).map(Arc::new);
+			self.insert_binding(InputBinding {
+				layer_id: HashSet::default(),
+				switch_id: Arc::new(combo.id.clone()),
+				slot: None,
+				target_layer,
+				key: combo.input.clone(),
+			});
 		}
 	}
 
@@ -212,8 +221,8 @@ impl GlobalInputState {
 				shared::InputUpdate::LayerDeactivate(layer) => {
 					state.active_layers.remove(layer);
 				}
-				shared::InputUpdate::SwitchPressed(switch_id, slot) => {
-					state.active_switches.insert(switch_id.clone(), *slot);
+				shared::InputUpdate::SwitchPressed(switch_id, _slot) => {
+					state.active_switches.insert(switch_id.clone());
 				}
 				shared::InputUpdate::SwitchReleased(switch_id) => {
 					state.active_switches.remove(switch_id);

@@ -1,9 +1,15 @@
 use serde::{Deserialize, Serialize};
 
-mod layout;
-pub use layout::*;
+mod binding;
+pub use binding::*;
+mod combo;
+pub use combo::*;
 mod key;
 pub use key::*;
+mod layer;
+pub use layer::*;
+mod layout;
+pub use layout::*;
 mod switch;
 pub use switch::*;
 
@@ -20,6 +26,6 @@ pub struct LogRecord {
 pub enum InputUpdate {
 	LayerActivate(String),
 	LayerDeactivate(String),
-	SwitchPressed(String, SwitchSlot),
+	SwitchPressed(String, Option<SwitchSlot>),
 	SwitchReleased(String),
 }

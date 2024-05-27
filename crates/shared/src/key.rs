@@ -778,9 +778,9 @@ impl std::str::FromStr for KeyAlias {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 
-pub struct KeyCombo(BTreeSet<KeyAlias>);
+pub struct KeySet(BTreeSet<KeyAlias>);
 
-impl KeyCombo {
+impl KeySet {
 	pub fn get_single(&self) -> Option<KeyAlias> {
 		match self.0.len() {
 			1 => self.iter().next().cloned(),
@@ -793,13 +793,13 @@ impl KeyCombo {
 	}
 }
 
-impl std::fmt::Display for KeyCombo {
+impl std::fmt::Display for KeySet {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		write!(f, "{}", self.0.iter().map(|alias| alias.to_string()).join("+"))
 	}
 }
 
-impl std::str::FromStr for KeyCombo {
+impl std::str::FromStr for KeySet {
 	type Err = anyhow::Error;
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
 		let mut combo = BTreeSet::new();

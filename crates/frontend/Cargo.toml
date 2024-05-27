@@ -62,6 +62,7 @@ gloo-utils = "0.2"
 gloo-timers = { version = "0.3", features = ["futures"] }
 fluvio-wasm-timer = "0.2"
 wasm-timer = "0.2"
+svgtypes = "0.15"
 
 yew = { version = "0.21", features = ["csr"] }
 yewdux = "0.10"

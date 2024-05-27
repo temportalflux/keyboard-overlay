@@ -599,7 +599,7 @@ impl std::fmt::Display for HotKey {
 	}
 }
 
-pub fn alias_hotkeys(combo: &shared::KeyCombo) -> Vec<HotKey> {
+pub fn alias_hotkeys(combo: &shared::KeySet) -> Vec<HotKey> {
 	let mut hotkeys = Vec::with_capacity(3);
 
 	if let Some(alias) = combo.get_single() {
